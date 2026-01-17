@@ -1,0 +1,388 @@
+"""Code-aware TLDR using AST parsing.
+
+Unlike narrative LLM summarization, this extracts actual code structure:
+- Function signatures (exact names, parameters, return types)
+- Class definitions (names, methods, attributes)
+- Constants and imports
+- Docstrings (brief)
+
+This preserves the symbols Claude needs to actually USE the code.
+
+Layers (like CC-v3):
+- L1: AST (signatures only)
+- L2: AST + brief docstrings
+- L3: AST + docstrings + call graph hints
+"""
+import ast
+import re
+from pathlib import Path
+from typing import Optional
+
+
+def extract_python_structure(content: str, filename: str = "file.py", level: str = "L1") -> str:
+    """
+    Extract code structure using AST parsing.
+
+    Args:
+        content: Python source code
+        filename: Name for header
+        level: L1 (signatures), L2 (+docstrings), L3 (+details)
+
+    Returns:
+        Structured summary preserving exact symbols
+    """
+    try:
+        tree = ast.parse(content)
+    except SyntaxError as e:
+        return f"## {filename}\n[Syntax error: {e}]\n"
+
+    lines = []
+    lines.append(f"## {filename}")
+    lines.append("")
+
+    # Extract imports
+    imports = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                imports.append(alias.name)
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            for alias in node.names:
+                imports.append(f"{module}.{alias.name}")
+
+    if imports:
+        lines.append(f"**Imports:** {', '.join(imports[:10])}")
+        if len(imports) > 10:
+            lines.append(f"  (+{len(imports) - 10} more)")
+        lines.append("")
+
+    # Extract top-level constants
+    constants = []
+    for node in ast.iter_child_nodes(tree):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id.isupper():
+                    constants.append(target.id)
+
+    if constants:
+        lines.append(f"**Constants:** {', '.join(constants)}")
+        lines.append("")
+
+    # Extract classes
+    classes = [node for node in ast.iter_child_nodes(tree) if isinstance(node, ast.ClassDef)]
+    if classes:
+        lines.append("**Classes:**")
+        for cls in classes:
+            # Get base classes
+            bases = [_get_name(base) for base in cls.bases]
+            base_str = f"({', '.join(bases)})" if bases else ""
+
+            lines.append(f"- `{cls.name}{base_str}`")
+
+            # Get docstring if L2+
+            if level in ("L2", "L3"):
+                docstring = ast.get_docstring(cls)
+                if docstring:
+                    first_line = docstring.split('\n')[0][:80]
+                    lines.append(f"  {first_line}")
+
+            # Get methods
+            methods = [n for n in cls.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+            if methods:
+                method_sigs = []
+                for method in methods[:10]:  # Limit to 10 methods
+                    sig = _format_function_signature(method, include_types=level != "L1")
+                    method_sigs.append(sig)
+                lines.append(f"  Methods: {', '.join(method_sigs)}")
+                if len(methods) > 10:
+                    lines.append(f"  (+{len(methods) - 10} more methods)")
+        lines.append("")
+
+    # Extract top-level functions
+    functions = [node for node in ast.iter_child_nodes(tree)
+                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))]
+
+    if functions:
+        lines.append("**Functions:**")
+        for func in functions:
+            sig = _format_function_signature(func, include_types=True)
+            lines.append(f"- `{sig}`")
+
+            # Get docstring if L2+
+            if level in ("L2", "L3"):
+                docstring = ast.get_docstring(func)
+                if docstring:
+                    first_line = docstring.split('\n')[0][:80]
+                    lines.append(f"  {first_line}")
+        lines.append("")
+
+    # For L3, add call graph hints
+    if level == "L3":
+        calls = _extract_function_calls(tree)
+        if calls:
+            lines.append("**Internal Calls:**")
+            for caller, callees in list(calls.items())[:5]:
+                lines.append(f"- {caller} -> {', '.join(callees[:5])}")
+            lines.append("")
+
+    return '\n'.join(lines)
+
+
+def _format_function_signature(node: ast.FunctionDef, include_types: bool = True) -> str:
+    """Format a function signature from AST node."""
+    name = node.name
+
+    # Get arguments
+    args = []
+
+    # Regular args
+    for arg in node.args.args:
+        arg_str = arg.arg
+        if include_types and arg.annotation:
+            arg_str += f": {_get_annotation(arg.annotation)}"
+        args.append(arg_str)
+
+    # *args
+    if node.args.vararg:
+        args.append(f"*{node.args.vararg.arg}")
+
+    # **kwargs
+    if node.args.kwarg:
+        args.append(f"**{node.args.kwarg.arg}")
+
+    # Return type
+    return_str = ""
+    if include_types and node.returns:
+        return_str = f" -> {_get_annotation(node.returns)}"
+
+    # Async prefix
+    prefix = "async " if isinstance(node, ast.AsyncFunctionDef) else ""
+
+    return f"{prefix}{name}({', '.join(args)}){return_str}"
+
+
+def _get_annotation(node) -> str:
+    """Get string representation of a type annotation."""
+    if isinstance(node, ast.Name):
+        return node.id
+    elif isinstance(node, ast.Constant):
+        return repr(node.value)
+    elif isinstance(node, ast.Subscript):
+        value = _get_annotation(node.value)
+        slice_val = _get_annotation(node.slice)
+        return f"{value}[{slice_val}]"
+    elif isinstance(node, ast.Tuple):
+        elements = [_get_annotation(e) for e in node.elts]
+        return ', '.join(elements)
+    elif isinstance(node, ast.Attribute):
+        return f"{_get_annotation(node.value)}.{node.attr}"
+    elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        # Union type (X | Y)
+        left = _get_annotation(node.left)
+        right = _get_annotation(node.right)
+        return f"{left} | {right}"
+    else:
+        return "..."
+
+
+def _get_name(node) -> str:
+    """Get name from various AST nodes."""
+    if isinstance(node, ast.Name):
+        return node.id
+    elif isinstance(node, ast.Attribute):
+        return f"{_get_name(node.value)}.{node.attr}"
+    elif isinstance(node, ast.Subscript):
+        return f"{_get_name(node.value)}[...]"
+    return "?"
+
+
+def _extract_function_calls(tree: ast.AST) -> dict:
+    """Extract function call graph (caller -> callees)."""
+    calls = {}
+
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            caller = node.name
+            callees = set()
+
+            for child in ast.walk(node):
+                if isinstance(child, ast.Call):
+                    if isinstance(child.func, ast.Name):
+                        callees.add(child.func.id)
+                    elif isinstance(child.func, ast.Attribute):
+                        callees.add(child.func.attr)
+
+            if callees:
+                calls[caller] = list(callees)
+
+    return calls
+
+
+def generate_code_tldr(
+    content: str,
+    filename: str,
+    level: str = "L1"
+) -> str:
+    """
+    Generate TLDR for code files using AST parsing.
+
+    Args:
+        content: File content
+        filename: Filename (used to detect language)
+        level: L1 (signatures), L2 (+docstrings), L3 (+call graph)
+
+    Returns:
+        Structured code summary
+    """
+    ext = Path(filename).suffix.lower()
+
+    if ext == ".py":
+        return extract_python_structure(content, filename, level)
+    elif ext in (".js", ".ts", ".jsx", ".tsx"):
+        return _extract_js_structure(content, filename, level)
+    else:
+        # Fallback: regex-based extraction for other languages
+        return _extract_generic_structure(content, filename, level)
+
+
+def _extract_js_structure(content: str, filename: str, level: str) -> str:
+    """Extract structure from JavaScript/TypeScript using regex."""
+    lines = [f"## {filename}", ""]
+
+    # Extract imports
+    imports = re.findall(r"import\s+(?:{[^}]+}|\w+)\s+from\s+['\"]([^'\"]+)['\"]", content)
+    if imports:
+        lines.append(f"**Imports:** {', '.join(imports[:8])}")
+        lines.append("")
+
+    # Extract exports
+    exports = re.findall(r"export\s+(?:default\s+)?(?:const|let|var|function|class|interface|type)\s+(\w+)", content)
+    if exports:
+        lines.append(f"**Exports:** {', '.join(exports)}")
+        lines.append("")
+
+    # Extract functions
+    functions = re.findall(
+        r"(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*\(([^)]*)\)",
+        content
+    )
+    arrow_functions = re.findall(
+        r"(?:export\s+)?(?:const|let)\s+(\w+)\s*=\s*(?:async\s+)?\([^)]*\)\s*(?::\s*\w+)?\s*=>",
+        content
+    )
+
+    all_funcs = [(name, params) for name, params in functions]
+    all_funcs.extend([(name, "") for name in arrow_functions])
+
+    if all_funcs:
+        lines.append("**Functions:**")
+        for name, params in all_funcs[:15]:
+            params_short = params[:50] + "..." if len(params) > 50 else params
+            lines.append(f"- `{name}({params_short})`")
+        lines.append("")
+
+    # Extract classes/interfaces
+    classes = re.findall(r"(?:export\s+)?(?:class|interface)\s+(\w+)", content)
+    if classes:
+        lines.append(f"**Classes/Interfaces:** {', '.join(classes)}")
+        lines.append("")
+
+    # Extract types
+    types = re.findall(r"(?:export\s+)?type\s+(\w+)\s*=", content)
+    if types:
+        lines.append(f"**Types:** {', '.join(types)}")
+        lines.append("")
+
+    return '\n'.join(lines)
+
+
+def _extract_generic_structure(content: str, filename: str, level: str) -> str:
+    """Fallback: Extract structure using regex patterns."""
+    lines = [f"## {filename}", ""]
+
+    # Common function patterns
+    func_patterns = [
+        r"def\s+(\w+)\s*\(",           # Python
+        r"func\s+(\w+)\s*\(",           # Go
+        r"fn\s+(\w+)\s*\(",             # Rust
+        r"function\s+(\w+)\s*\(",       # JS/PHP
+        r"public\s+\w+\s+(\w+)\s*\(",   # Java/C#
+        r"private\s+\w+\s+(\w+)\s*\(",  # Java/C#
+    ]
+
+    functions = []
+    for pattern in func_patterns:
+        functions.extend(re.findall(pattern, content))
+
+    if functions:
+        unique_funcs = list(set(functions))[:15]
+        lines.append(f"**Functions:** {', '.join(unique_funcs)}")
+        lines.append("")
+
+    # Common class patterns
+    class_patterns = [
+        r"class\s+(\w+)",
+        r"struct\s+(\w+)",
+        r"interface\s+(\w+)",
+        r"trait\s+(\w+)",
+    ]
+
+    classes = []
+    for pattern in class_patterns:
+        classes.extend(re.findall(pattern, content))
+
+    if classes:
+        lines.append(f"**Classes/Structs:** {', '.join(set(classes))}")
+        lines.append("")
+
+    return '\n'.join(lines)
+
+
+# === Quality measurement ===
+
+def measure_quality(content: str, filename: str, tldr: str) -> dict:
+    """
+    Measure TLDR quality by checking symbol preservation.
+
+    Returns dict with:
+    - total_symbols: Count of symbols in original
+    - preserved_symbols: Count preserved in TLDR
+    - quality_score: Percentage preserved
+    - missing: List of missing symbols
+    """
+    # Extract symbols from original
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
+        return {"error": "Could not parse file"}
+
+    symbols = set()
+
+    # Only collect TOP-LEVEL symbols (matching extract_python_structure behavior)
+    for node in ast.iter_child_nodes(tree):
+        if isinstance(node, ast.FunctionDef):
+            symbols.add(node.name)
+        elif isinstance(node, ast.AsyncFunctionDef):
+            symbols.add(node.name)
+        elif isinstance(node, ast.ClassDef):
+            symbols.add(node.name)
+        elif isinstance(node, ast.Assign):
+            # Top-level constants only
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id.isupper():
+                    symbols.add(target.id)
+
+    # Check which are preserved (use word boundaries to avoid false positives)
+    preserved = [s for s in symbols if re.search(rf'\b{re.escape(s.lower())}\b', tldr.lower())]
+    missing = [s for s in symbols if not re.search(rf'\b{re.escape(s.lower())}\b', tldr.lower())]
+
+    quality = len(preserved) / len(symbols) * 100 if symbols else 100
+
+    return {
+        "total_symbols": len(symbols),
+        "preserved_symbols": len(preserved),
+        "quality_score": round(quality, 1),
+        "missing": missing[:10],  # First 10 missing
+        "preserved": preserved[:10],
+    }
