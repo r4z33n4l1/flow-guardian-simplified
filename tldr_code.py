@@ -359,20 +359,23 @@ def measure_quality(content: str, filename: str, tldr: str) -> dict:
 
     symbols = set()
 
-    for node in ast.walk(tree):
+    # Only collect TOP-LEVEL symbols (matching extract_python_structure behavior)
+    for node in ast.iter_child_nodes(tree):
         if isinstance(node, ast.FunctionDef):
             symbols.add(node.name)
         elif isinstance(node, ast.AsyncFunctionDef):
             symbols.add(node.name)
         elif isinstance(node, ast.ClassDef):
             symbols.add(node.name)
-        elif isinstance(node, ast.Name) and node.id.isupper():
-            symbols.add(node.id)
+        elif isinstance(node, ast.Assign):
+            # Top-level constants only
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id.isupper():
+                    symbols.add(target.id)
 
-    # Check which are preserved
-    tldr_lower = tldr.lower()
-    preserved = [s for s in symbols if s.lower() in tldr_lower]
-    missing = [s for s in symbols if s.lower() not in tldr_lower]
+    # Check which are preserved (use word boundaries to avoid false positives)
+    preserved = [s for s in symbols if re.search(rf'\b{re.escape(s.lower())}\b', tldr.lower())]
+    missing = [s for s in symbols if not re.search(rf'\b{re.escape(s.lower())}\b', tldr.lower())]
 
     quality = len(preserved) / len(symbols) * 100 if symbols else 100
 
