@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "flow-guardian": {
+      "type": "sse",
+      "url": "https://0ef20a7d9cab.ngrok-free.app/sse",
+      "env": {
+        "BACKBOARD_API_KEY": "your_backboard_api_key_here",
+        "CEREBRAS_API_KEY": "your_cerebras_api_key_here",
+        "LINEAR_API_KEY": "your_linear_api_key_here",
+        "FLOW_GUARDIAN_USER": "your_username_here",
+        "BACKBOARD_PERSONAL_ASSISTANT_ID": "your_assistant_id_here",
+        "BACKBOARD_PERSONAL_THREAD_ID": "your_thread_id_here"
+      }
+    }
+  }
+}
