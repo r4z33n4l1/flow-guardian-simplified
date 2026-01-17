@@ -1449,10 +1449,9 @@ async def run_api(service: FlowService, port: int = 8090):
 
 # ============ MCP MODE ============
 
-async def run_mcp(service: FlowService):
-    """Run MCP server for Claude Code."""
+def create_mcp_server(service: FlowService):
+    """Create MCP server with tools configured."""
     from mcp.server import Server
-    from mcp.server.stdio import stdio_server
     from mcp.types import Tool, TextContent
 
     server = Server("flow-guardian")
@@ -1513,6 +1512,37 @@ async def run_mcp(service: FlowService):
                 name="flow_status",
                 description="Get Flow Guardian status",
                 inputSchema={"type": "object", "properties": {}}
+            ),
+            # Linear tools
+            Tool(
+                name="linear_status",
+                description="Check Linear connection status and list teams",
+                inputSchema={"type": "object", "properties": {}}
+            ),
+            Tool(
+                name="linear_issues",
+                description="List or search Linear issues",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "days": {"type": "integer", "description": "Number of days to look back (default: 30)", "default": 30},
+                        "limit": {"type": "integer", "description": "Maximum issues to return (default: 20)", "default": 20},
+                        "bugs_only": {"type": "boolean", "description": "Only return bugs (default: false)", "default": False},
+                    },
+                }
+            ),
+            Tool(
+                name="linear_create_issue",
+                description="Create a new issue in Linear",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string", "description": "Issue title"},
+                        "description": {"type": "string", "description": "Issue description"},
+                        "priority": {"type": "integer", "description": "Priority: 1=urgent, 2=high, 3=medium, 4=low", "default": 3},
+                    },
+                    "required": ["title"]
+                }
             ),
         ]
 
@@ -1580,14 +1610,125 @@ async def run_mcp(service: FlowService):
                     lines.append(f"Summary: {result.get('last_summary', 'N/A')}")
                 return [TextContent(type="text", text="\n".join(lines))]
 
+            # Linear tools
+            elif name == "linear_status":
+                import linear_client
+                result = await linear_client.test_connection()
+                if result.get("connected"):
+                    lines = [
+                        f"Linear: Connected",
+                        f"User: {result.get('user', 'N/A')} ({result.get('email', 'N/A')})",
+                        f"Teams:"
+                    ]
+                    for team in result.get("teams", []):
+                        lines.append(f"  - {team['name']} ({team['key']}): {team['issues']} issues")
+                    return [TextContent(type="text", text="\n".join(lines))]
+                else:
+                    return [TextContent(type="text", text=f"Linear: Not connected - {result.get('error', 'Unknown error')}")]
+
+            elif name == "linear_issues":
+                import linear_client
+                days = arguments.get("days", 30)
+                limit = arguments.get("limit", 20)
+                bugs_only = arguments.get("bugs_only", False)
+
+                if bugs_only:
+                    issues = await linear_client.get_recent_bugs(days=days, limit=limit)
+                else:
+                    issues = await linear_client.get_all_issues(days=days, limit=limit)
+
+                if not issues:
+                    return [TextContent(type="text", text="No issues found")]
+
+                lines = [f"Found {len(issues)} issues (last {days} days):"]
+                for issue in issues[:limit]:
+                    state = issue.get("state", {}).get("name", "?")
+                    priority = issue.get("priorityLabel", "None")
+                    assignee = issue.get("assignee", {})
+                    assignee_name = assignee.get("name", "Unassigned") if assignee else "Unassigned"
+                    lines.append(f"  [{state}] {issue['identifier']}: {issue['title']}")
+                    lines.append(f"      Priority: {priority} | Assignee: {assignee_name}")
+                return [TextContent(type="text", text="\n".join(lines))]
+
+            elif name == "linear_create_issue":
+                import linear_agent
+                title = arguments.get("title", "")
+                description = arguments.get("description", "")
+                priority = arguments.get("priority", 3)
+
+                if not title:
+                    return [TextContent(type="text", text="Error: title is required")]
+
+                issue = await linear_agent.create_linear_issue(
+                    title=title,
+                    description=description,
+                    priority=priority
+                )
+
+                if issue:
+                    return [TextContent(type="text", text=f"Created issue: {issue.get('identifier')} - {issue.get('title')}\nURL: {issue.get('url', 'N/A')}")]
+                else:
+                    return [TextContent(type="text", text="Failed to create issue. Check LINEAR_API_KEY is set.")]
+
             else:
                 return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
         except Exception as e:
             return [TextContent(type="text", text=f"Error: {str(e)}")]
 
+    return server
+
+
+async def run_mcp(service: FlowService):
+    """Run MCP server for Claude Code (stdio mode)."""
+    from mcp.server.stdio import stdio_server
+
+    server = create_mcp_server(service)
+
     async with stdio_server() as (read, write):
         await server.run(read, write, server.create_initialization_options())
+
+
+async def run_mcp_http(service: FlowService, port: int = 8091):
+    """Run MCP server over HTTP using SSE transport."""
+    from starlette.applications import Starlette
+    from starlette.routing import Route, Mount
+    from starlette.responses import JSONResponse
+    from mcp.server.sse import SseServerTransport
+    import uvicorn
+
+    server = create_mcp_server(service)
+    sse = SseServerTransport("/messages/")
+
+    async def handle_sse(request):
+        async with sse.connect_sse(
+            request.scope, request.receive, request._send
+        ) as streams:
+            await server.run(
+                streams[0], streams[1], server.create_initialization_options()
+            )
+
+    async def handle_messages(request):
+        await sse.handle_post_message(request.scope, request.receive, request._send)
+
+    async def health(request):
+        return JSONResponse({"status": "ok", "server": "flow-guardian-mcp"})
+
+    app = Starlette(
+        debug=True,
+        routes=[
+            Route("/health", health),
+            Route("/sse", handle_sse),
+            Route("/messages/", handle_messages, methods=["POST"]),
+        ],
+    )
+
+    log(f"MCP HTTP server starting on http://localhost:{port}")
+    log(f"SSE endpoint: http://localhost:{port}/sse")
+
+    config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="info")
+    server_instance = uvicorn.Server(config)
+    await server_instance.serve()
 
 
 # ============ COMBINED MODE ============
@@ -1639,14 +1780,20 @@ def main():
     )
     parser.add_argument(
         "mode",
-        choices=["daemon", "api", "mcp", "all", "status", "stop"],
+        choices=["daemon", "api", "mcp", "mcp-http", "all", "status", "stop"],
         help="Server mode to run"
     )
     parser.add_argument(
         "--port", "-p",
         type=int,
         default=8090,
-        help="HTTP API port (default: 8090)"
+        help="HTTP API port (default: 8090 for api, 8091 for mcp-http)"
+    )
+    parser.add_argument(
+        "--mcp-port",
+        type=int,
+        default=8091,
+        help="MCP HTTP server port (default: 8091)"
     )
     parser.add_argument(
         "--foreground", "-f",
@@ -1676,7 +1823,7 @@ def main():
             print("Server not running")
         return
 
-    if is_running() and args.mode != "mcp":
+    if is_running() and args.mode not in ("mcp", "mcp-http"):
         print(f"Server already running (PID: {is_running()})")
         return
 
@@ -1689,6 +1836,14 @@ def main():
     if args.mode == "mcp":
         # MCP runs on stdio, no PID file needed
         asyncio.run(run_mcp(service))
+
+    elif args.mode == "mcp-http":
+        # MCP HTTP server
+        write_pid()
+        try:
+            asyncio.run(run_mcp_http(service, args.mcp_port))
+        finally:
+            PID_FILE.unlink(missing_ok=True)
 
     elif args.foreground or args.mode == "api":
         write_pid()
