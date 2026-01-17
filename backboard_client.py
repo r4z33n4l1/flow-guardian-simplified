@@ -136,9 +136,7 @@ async def create_assistant(name: str, llm_provider: str = "cerebras") -> str:
         headers=_headers(),
         json={
             "name": name,
-            "llm_provider": llm_provider,
-            "llm_model_name": "llama-3.3-70b",
-            "tools": []
+            "description": name,
         }
     )
     return response.json()["assistant_id"]
