@@ -1,12 +1,48 @@
+# Environment
 .env
-__pycache__/
-*.pyc
-.pytest_cache/
-.flowguardian/
+.venv/
 venv/
-*.egg-info/
-dist/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
 build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Type checking
+.mypy_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+.flow-guardian/
+.flowguardian/
+
+# Logs
+*.log
 
 # Embedded repositories
 testsql/sqlite/
