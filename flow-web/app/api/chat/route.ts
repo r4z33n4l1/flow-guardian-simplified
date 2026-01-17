@@ -93,36 +93,12 @@ function formatContextAsResponse(context: string[]): string {
   return `Here's what I have in my local knowledge base:\n\n${formatted}`;
 }
 
-// Quick check: Can local context answer the query?
-// Returns false to trigger Backboard fetch if context seems insufficient
-function canAnswerFromContext(
-  query: string,
-  context: string[],
-): { canAnswer: boolean; quickAnswer?: string } {
-  // If no local context, definitely need Backboard
-  if (context.length === 0) {
-    console.log('[Chat] No local context, fetching from Backboard');
-    return { canAnswer: false };
-  }
-
-  // Check if query topic appears in local context
+// Check if local context has relevant terms for the query
+function hasRelevantLocalContext(query: string, context: string[]): boolean {
+  if (context.length === 0) return false;
   const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 3);
   const contextText = context.join(' ').toLowerCase();
-
-  // If main query terms aren't in context, fetch from Backboard
-  const hasRelevantContext = queryWords.some(word => contextText.includes(word));
-  if (!hasRelevantContext) {
-    console.log('[Chat] Query terms not in local context, fetching from Backboard');
-    return { canAnswer: false };
-  }
-
-  // Simple heuristic: if local context seems relevant, use it
-  // Otherwise, fetch from Backboard for richer context
-  // No LLM call needed - just proceed to main response with appropriate context
-  console.log('[Chat] Local context has relevant terms, proceeding with local + Backboard context');
-
-  // Always return false to ensure we get Backboard context for richer responses
-  return { canAnswer: false };
+  return queryWords.some(word => contextText.includes(word));
 }
 
 export async function POST(request: Request) {
@@ -175,34 +151,12 @@ export async function POST(request: Request) {
       });
     }
 
-    // Quick check: Can we answer from local context or conversation history?
-    const { canAnswer, quickAnswer } = canAnswerFromContext(contextQuery, context);
-
     // PHASE 2: If local context insufficient, fetch from Backboard
-    if (!canAnswer) {
-      console.log('[Chat] Phase 2: Fetching from Backboard...');
+    if (!hasRelevantLocalContext(contextQuery, context)) {
+      console.log('[Chat] Phase 2: Local context insufficient, fetching from Backboard...');
       context = await getContextFromBackboard(contextQuery, false); // Include Backboard
-    }
-
-    // If we got a quick answer, return it directly (no streaming needed)
-    if (canAnswer && quickAnswer) {
-      const encoder = new TextEncoder();
-      const stream = new ReadableStream({
-        start(controller) {
-          const data = JSON.stringify({ content: quickAnswer });
-          controller.enqueue(encoder.encode(`data: ${data}\n\n`));
-          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-          controller.close();
-        },
-      });
-
-      return new Response(stream, {
-        headers: {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          'Connection': 'keep-alive',
-        },
-      });
+    } else {
+      console.log('[Chat] Local context has relevant terms, using local context');
     }
 
     // Build messages with system prompt for full response

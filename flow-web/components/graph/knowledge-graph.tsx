@@ -1,11 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useState, useMemo } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ReactFlow,
   type Node,
   type Edge,
-  Controls,
   Background,
   useNodesState,
   useEdgesState,
@@ -13,7 +12,6 @@ import {
   type NodeTypes,
   Handle,
   Position,
-  Panel,
   useReactFlow,
   ReactFlowProvider,
 } from '@xyflow/react';
@@ -180,6 +178,17 @@ interface KnowledgeGraphProps {
   onNodeSelect?: (node: Node | null) => void;
 }
 
+// Deterministic pseudo-random based on string (for consistent layouts)
+function seededRandom(seed: string): number {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    const char = seed.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return (Math.abs(hash) % 1000) / 1000;
+}
+
 // Improved layout algorithm - spiral with type clustering
 function calculateNodePositions(nodes: GraphData['nodes'], centerX: number, centerY: number) {
   const typeGroups: Record<string, typeof nodes> = {
@@ -230,19 +239,19 @@ function calculateNodePositions(nodes: GraphData['nodes'], centerX: number, cent
   learningNodes.forEach((node, i) => {
     const col = i % cols;
     const row = Math.floor(i / cols);
-    // Add some randomness to avoid perfect grid
-    const jitterX = (Math.random() - 0.5) * 60;
-    const jitterY = (Math.random() - 0.5) * 60;
+    // Add deterministic jitter based on node id for consistent layout
+    const jitterX = (seededRandom(node.id + '_x') - 0.5) * 60;
+    const jitterY = (seededRandom(node.id + '_y') - 0.5) * 60;
     positions[node.id] = {
       x: gridStartX + col * spacing + jitterX + 300,
       y: gridStartY + row * spacing + jitterY + 200,
     };
   });
 
-  // Issues scattered around
+  // Issues scattered around with deterministic radius variation
   typeGroups.issue.forEach((node, i) => {
     const angle = (i / Math.max(typeGroups.issue.length, 1)) * 2 * Math.PI;
-    const radius = 350 + Math.random() * 100;
+    const radius = 350 + seededRandom(node.id) * 100;
     positions[node.id] = {
       x: centerX + Math.cos(angle) * radius,
       y: centerY + Math.sin(angle) * radius,

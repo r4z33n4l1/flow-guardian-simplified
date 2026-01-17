@@ -889,7 +889,7 @@ def create_api_app(service: FlowService):
         # Create edges between learnings with shared tags
         learnings_by_tag = {}
         if include_learnings:
-            for learning in service.memory.get_all_learnings()[:limit]:
+            for learning in learnings:  # Reuse learnings from earlier fetch
                 learning_id = learning.get("id", f"learning_{learning.get('timestamp', '')}")
                 for tag in learning.get("tags", []):
                     if tag not in learnings_by_tag:
@@ -987,8 +987,7 @@ Return ONLY the JSON array."""
                     max_tokens=1000
                 )
 
-                # Parse response
-                import re
+                # Parse response - extract JSON array
                 start = response.find('[')
                 end = response.rfind(']') + 1
                 if start >= 0 and end > start:
