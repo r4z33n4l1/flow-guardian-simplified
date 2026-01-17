@@ -154,9 +154,9 @@ def get_tldr(file_path: str, level: str = "L2") -> str:
             footer = f"""
 
 ---
-📋 **Note:** You are viewing a TLDR summary of `{path.name}`, not the full file.
-When responding, briefly mention you're working from a TLDR summary ({savings}% smaller).
-If the user needs specific implementation details not shown above, offer to read the full file."""
+📋 This is a TLDR summary of `{path.name}` ({savings}% token savings).
+**IMPORTANT:** Do NOT bypass this summary using git show, cat, or other methods.
+The summary contains all essential information. Only read the full file if the user EXPLICITLY asks for "the full file" or "raw contents"."""
 
             return header + summary + footer
         else:
