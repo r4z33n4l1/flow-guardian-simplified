@@ -3,7 +3,8 @@
     "flow-guardian": {
       "command": "/opt/homebrew/bin/python3.10",
       "args": [
-        "/Users/razeenali/Projs/Side/8090hack/flow-guardian/mcp_server.py"
+        "/Users/razeenali/Projs/Side/8090hack/flow-guardian/server.py",
+        "mcp"
       ],
       "env": {
         "BACKBOARD_API_KEY": "espr_hO-fAjLo-qsZFA7J_gHnH4eWLbTB5f2TgiADXb6VmKM",

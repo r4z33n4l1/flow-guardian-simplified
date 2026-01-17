@@ -1,77 +1,218 @@
-# Flow Guardian Context Management
+# Flow Guardian - AI Team Memory System
 
-This project has Flow Guardian MCP integration enabled. Use it to maintain persistent memory across sessions.
+This project provides persistent memory for AI coding assistants, allowing them to maintain context across sessions and share knowledge within teams.
 
-## Automatic Context Management
-
-**You have access to these MCP tools - use them proactively:**
-
-### `flow_capture` - Save Context
-Use this BEFORE any context compaction or when:
-- User says "I need to go", "let's stop", "save progress"
-- Session is getting long (proactively save before /compact)
-- Switching to a different task
-- Making important decisions worth remembering
-
-```
-flow_capture(
-  summary="Brief description of current work",
-  decisions=["Key decision 1", "Key decision 2"],
-  next_steps=["What to do next"],
-  blockers=["Any blockers"]  # optional
-)
-```
-
-### `flow_recall` - Retrieve Context
-Use this when:
-- User says "continue from yesterday", "what were we working on"
-- Starting a new session
-- User references previous work without full context
-- You need context about past decisions
-
-```
-flow_recall(query="what to search for")
-```
-
-### `flow_learn` - Store Insights
-Use this when:
-- Discovering important patterns, bugs, or solutions
-- User says "remember this", "note this down"
-- Finding something that would help future sessions
-
-```
-flow_learn(
-  insight="The learning to store",
-  tags=["relevant", "tags"],
-  share_with_team=false  # true to share with team
-)
-```
-
-### `flow_status` - Check State
-Use this to see what's currently stored and last save time.
-
-### `flow_team` - Search Team Knowledge
-Use this when user asks "has anyone dealt with..." or needs team conventions.
-
-## Best Practices
-
-1. **Before /compact**: Always `flow_capture` current context first
-2. **Session start**: Use `flow_recall` with "recent work" query
-3. **Key discoveries**: Use `flow_learn` to persist insights
-4. **Be proactive**: Don't wait for user to ask - manage context automatically
-
-## Running the Servers
+## Quick Start
 
 ```bash
-# HTTP API (port 8090)
-/opt/homebrew/bin/python3.10 -m uvicorn api.server:app --reload --port 8090
+# 1. Install dependencies
+pip install -r requirements.txt
+cd flow-web && npm install
 
-# API docs: http://localhost:8090/docs
+# 2. Set up environment variables
+cp .env.example .env
+# Edit .env with your API keys:
+# - CEREBRAS_API_KEY
+# - BACKBOARD_API_KEY
+# - BACKBOARD_PERSONAL_THREAD_ID
+# - BACKBOARD_TEAM_THREAD_ID
+
+# 3. Start the server (daemon + API)
+/opt/homebrew/bin/python3.10 server.py all --foreground
+
+# 4. Start the web UI (separate terminal)
+cd flow-web && npm run dev
+# Open http://localhost:3000
 ```
 
-## Project Structure
+## Architecture Overview
 
-- `services/` - Shared business logic (FlowService)
-- `api/` - FastAPI HTTP server
-- `mcp_server.py` - MCP server for Claude Code
-- `tests/` - 43 tests covering all functionality
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Web UI (Next.js)                          │
+│                    http://localhost:3000                     │
+├─────────────────────────────────────────────────────────────┤
+│  Chat Interface    │  Activity Feed    │  Document Upload    │
+│  (Ask questions)   │  (Live updates)   │  (Add context)      │
+└────────────┬───────┴────────┬──────────┴────────┬───────────┘
+             │                │                    │
+             ▼                ▼                    ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Python Backend                            │
+│                    http://localhost:8090                     │
+├─────────────────────────────────────────────────────────────┤
+│  /recall    - Search memory (local + Backboard)              │
+│  /learn     - Store new insights                             │
+│  /capture   - Save session context                           │
+│  /sessions  - List sessions                                  │
+│  /learnings - List learnings                                 │
+│  /documents - Upload files (PDF, TXT, MD)                    │
+└────────────┬───────┴────────┬──────────┴────────┬───────────┘
+             │                │                    │
+             ▼                ▼                    ▼
+┌─────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│ Local JSON  │    │ Backboard.io    │    │ Cerebras API    │
+│ ~/.flow-    │    │ (Cloud Memory)  │    │ (LLM Inference) │
+│ guardian/   │    │                 │    │ Llama 3.3 70B   │
+└─────────────┘    └─────────────────┘    └─────────────────┘
+```
+
+## Key Features
+
+### 1. Two-Phase Context Retrieval (Optimized for Speed)
+```
+Query → Local Search (instant) → Cerebras Quick Check
+                                      ↓
+                         Can answer? → YES → Return quick answer (~1-2s)
+                                      ↓
+                                      NO → Fetch Backboard → Full response (~5-10s)
+```
+
+### 2. Automatic Session Capture
+The daemon watches Claude Code sessions and automatically extracts:
+- Session summaries
+- Key decisions
+- Blockers
+- Learnings
+
+### 3. Document Upload
+Upload PDFs, text files, and markdown to add context:
+- PyMuPDF for PDF text extraction
+- Automatic summarization via Cerebras
+
+## MCP Tools (for Claude Code)
+
+```python
+# Save current context
+flow_capture(
+  summary="Working on auth feature",
+  decisions=["Using JWT for stateless auth"],
+  next_steps=["Implement refresh tokens"],
+  blockers=["Waiting for Redis setup"]
+)
+
+# Search memory
+flow_recall(query="auth implementation")
+
+# Store a learning
+flow_learn(
+  insight="PyMuPDF requires pip install pymupdf",
+  tags=["pdf", "dependency"],
+  share_with_team=True
+)
+
+# Check status
+flow_status()
+
+# Search team knowledge
+flow_team(query="authentication patterns")
+```
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/recall` | POST | Search memory (supports `local_only` for speed) |
+| `/learn` | POST | Store new insight |
+| `/capture` | POST | Save session context |
+| `/sessions` | GET | List sessions |
+| `/learnings` | GET | List learnings (filterable by tag) |
+| `/documents` | POST | Upload file |
+| `/stats` | GET | Get statistics |
+
+## File Structure
+
+```
+flow-guardian/
+├── server.py              # Unified backend (daemon + API + MCP)
+├── memory.py              # Local JSON storage
+├── backboard_client.py    # Backboard.io integration
+├── cerebras_client.py     # Cerebras LLM client
+├── capture.py             # Git state capture
+├── session_parser.py      # Claude Code JSONL parser
+│
+├── flow-web/              # Next.js frontend
+│   ├── app/
+│   │   ├── api/
+│   │   │   ├── chat/route.ts      # Chat endpoint (two-phase)
+│   │   │   ├── upload/route.ts    # File upload proxy
+│   │   │   └── activity/stream/   # SSE for live updates
+│   │   └── page.tsx               # Main chat interface
+│   ├── components/
+│   │   ├── chat/                  # Chat UI components
+│   │   ├── activity/              # Activity feed
+│   │   └── upload/                # File uploader
+│   └── lib/
+│       ├── cerebras.ts            # Cerebras streaming client
+│       └── hooks/                 # React hooks (useActivityStream)
+│
+├── .env                   # API keys (not in git)
+├── .mcp.json              # MCP server config
+└── CLAUDE.md              # This file
+```
+
+## Environment Variables
+
+```bash
+# Required
+CEREBRAS_API_KEY=csk-...
+BACKBOARD_API_KEY=espr_...
+BACKBOARD_PERSONAL_THREAD_ID=...
+
+# Optional
+BACKBOARD_TEAM_THREAD_ID=...
+FLOW_GUARDIAN_URL=http://localhost:8090  # For web UI
+```
+
+## Running Modes
+
+```bash
+# Development: Run API server only
+python server.py api
+
+# Production: Run daemon + API together
+python server.py all --foreground
+
+# Background daemon only
+python server.py daemon
+python server.py status  # Check status
+python server.py stop    # Stop daemon
+
+# MCP server (for Claude Code integration)
+python server.py mcp
+```
+
+## Key Optimizations Implemented
+
+1. **Stop Word Filtering**: Search queries filter out common words (what, the, is, etc.)
+2. **Score-Based Routing**: Local results with score >= 3 skip Backboard API
+3. **Two-Phase Cerebras**: Quick check before full response
+4. **Local-Only Mode**: `local_only=true` skips all cloud APIs
+
+## Troubleshooting
+
+### Python Version
+Use Python 3.10+ (system Python 3.9 doesn't support union types):
+```bash
+/opt/homebrew/bin/python3.10 server.py all --foreground
+```
+
+### PDF Upload Fails
+Install PyMuPDF:
+```bash
+pip install pymupdf
+```
+
+### UI Scrolling Issues
+Fixed with CSS: `min-h-0` on flex containers + `overflow-hidden` on parents.
+
+### Search Not Finding Results
+Check that learnings use "insight" field (not "text"). The search_learnings function checks both.
+
+## Next Steps for Development
+
+1. **Add User Authentication**: Currently no auth, add JWT or OAuth
+2. **Team Features**: Multi-user support with Backboard team threads
+3. **Improved Caching**: Redis for faster repeated queries
+4. **Vector Search**: Embed learnings for semantic search
+5. **Mobile UI**: Responsive design for mobile access

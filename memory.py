@@ -268,8 +268,8 @@ def search_learnings(query: str, tags: Optional[list[str]] = None) -> list[dict]
     for learning in learnings:
         score = 0
 
-        # Score based on text match
-        text = learning.get("text", "").lower()
+        # Score based on text match (check both "insight" and "text" fields)
+        text = (learning.get("insight", "") or learning.get("text", "")).lower()
         if query_lower in text:
             score += 2
 
