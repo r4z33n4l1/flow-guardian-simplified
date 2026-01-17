@@ -244,6 +244,7 @@ def build_session(
         "git": {
             "branch": git_state.get("branch"),
             "uncommitted_files": git_state.get("uncommitted_files", []),
+            "last_commit_files": git_state.get("last_commit_files", []),
             "last_commit": git_state.get("last_commit"),
         },
         "metadata": {

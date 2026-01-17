@@ -91,12 +91,16 @@ def save(message: Optional[str], tag: tuple, quiet: bool):
             import handoff
             context = session.get("context", {})
             git = session.get("git", {})
+            # Use uncommitted files, or fallback to last commit files if tree is clean
+            files = git.get("uncommitted_files", [])
+            if not files:
+                files = git.get("last_commit_files", [])
             handoff.save_handoff({
                 "goal": context.get("summary", message or "Working on project"),
                 "status": "in_progress",
                 "now": message or "Working on project",
                 "hypothesis": context.get("hypothesis"),
-                "files": git.get("uncommitted_files", []),
+                "files": files,
                 "branch": git.get("branch"),
                 "session_id": session_id,
             })
