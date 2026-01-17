@@ -69,6 +69,13 @@ async def setup_team_assistant(team_name: str) -> tuple[str, str]:
 
 async def main():
     """Main setup function."""
+    import argparse
+    parser = argparse.ArgumentParser(description="Set up Backboard.io assistants")
+    parser.add_argument("--team", "-t", help="Team name (skip prompt)")
+    parser.add_argument("--no-team", action="store_true", help="Skip team setup")
+    parser.add_argument("--user", "-u", help="Username (override FLOW_GUARDIAN_USER)")
+    args = parser.parse_args()
+
     console.print(Panel(
         "[bold]Flow Guardian - Backboard.io Setup[/bold]\n\n"
         "This script creates the assistants and threads needed for\n"
@@ -85,18 +92,23 @@ async def main():
         sys.exit(1)
 
     # Get username
-    username = os.environ.get("FLOW_GUARDIAN_USER")
+    username = args.user or os.environ.get("FLOW_GUARDIAN_USER")
     if not username:
         console.print("\n[yellow]FLOW_GUARDIAN_USER not set in .env[/yellow]")
         from rich.prompt import Prompt
         username = Prompt.ask("Enter your username", default="user")
 
     # Get team name
-    from rich.prompt import Prompt, Confirm
-    setup_team = Confirm.ask("\nDo you want to set up team memory?", default=True)
-    team_name = None
-    if setup_team:
-        team_name = Prompt.ask("Enter team name", default="default-team")
+    if args.no_team:
+        team_name = None
+    elif args.team:
+        team_name = args.team
+    else:
+        from rich.prompt import Prompt, Confirm
+        setup_team = Confirm.ask("\nDo you want to set up team memory?", default=True)
+        team_name = None
+        if setup_team:
+            team_name = Prompt.ask("Enter team name", default="default-team")
 
     console.print()
 

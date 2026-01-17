@@ -49,7 +49,7 @@ def _headers() -> dict:
     if not API_KEY:
         raise BackboardAuthError("BACKBOARD_API_KEY environment variable not set")
     return {
-        "Authorization": f"Bearer {API_KEY}",
+        "X-API-Key": API_KEY,
         "Content-Type": "application/json"
     }
 
@@ -141,7 +141,7 @@ async def create_assistant(name: str, llm_provider: str = "cerebras") -> str:
             "tools": []
         }
     )
-    return response.json()["id"]
+    return response.json()["assistant_id"]
 
 
 async def create_thread(assistant_id: str) -> str:
@@ -157,9 +157,10 @@ async def create_thread(assistant_id: str) -> str:
     response = await _request_with_retry(
         "post",
         f"{BASE_URL}/assistants/{assistant_id}/threads",
-        headers=_headers()
+        headers=_headers(),
+        json={}
     )
-    return response.json()["id"]
+    return response.json()["thread_id"]
 
 
 async def health_check() -> bool:
@@ -198,18 +199,25 @@ async def store_message(
     Returns:
         Response from API
     """
-    payload = {
+    import json
+    # Backboard API uses multipart/form-data with string values
+    form_data = {
         "content": content,
-        "send_to_llm": False
+        "send_to_llm": "false"
     }
     if metadata:
-        payload["metadata"] = metadata
+        form_data["metadata"] = json.dumps(metadata)
+
+    # Don't include Content-Type header for form data - httpx sets it
+    headers = {"X-API-Key": API_KEY} if API_KEY else {}
+    if not API_KEY:
+        raise BackboardAuthError("BACKBOARD_API_KEY environment variable not set")
 
     response = await _request_with_retry(
         "post",
         f"{BASE_URL}/threads/{thread_id}/messages",
-        headers=_headers(),
-        json=payload
+        headers=headers,
+        data=form_data  # Use data= for form data, not json=
     )
     return response.json()
 
@@ -293,15 +301,21 @@ async def recall(thread_id: str, query: str) -> str:
     Returns:
         LLM response with relevant context
     """
+    # Backboard API uses multipart/form-data with string values
+    form_data = {
+        "content": query,
+        "memory": "auto",
+        "send_to_llm": "true"
+    }
+    headers = {"X-API-Key": API_KEY} if API_KEY else {}
+    if not API_KEY:
+        raise BackboardAuthError("BACKBOARD_API_KEY environment variable not set")
+
     response = await _request_with_retry(
         "post",
         f"{BASE_URL}/threads/{thread_id}/messages",
-        headers=_headers(),
-        json={
-            "content": query,
-            "memory": "auto",
-            "send_to_llm": True
-        }
+        headers=headers,
+        data=form_data
     )
     return response.json().get("content", "")
 

@@ -616,6 +616,200 @@ def history(limit: int, show_all: bool, branch: Optional[str]):
         sys.exit(1)
 
 
+# ============ DAEMON COMMAND GROUP ============
+
+@cli.group()
+def daemon():
+    """Auto-capture daemon for Claude Code sessions.
+
+    Watches your Claude Code sessions and automatically extracts
+    insights, storing them for infinite memory.
+
+    Examples:
+        flow daemon start     # Start background watcher
+        flow daemon stop      # Stop the daemon
+        flow daemon status    # Check daemon status
+    """
+    pass
+
+
+@daemon.command("start")
+@click.option("--foreground", "-f", is_flag=True, help="Run in foreground (don't daemonize)")
+def daemon_start(foreground: bool):
+    """Start the auto-capture daemon."""
+    import daemon as daemon_module
+
+    if foreground:
+        console.print("[dim]Starting daemon in foreground...[/dim]")
+        console.print("[dim]Press Ctrl+C to stop[/dim]\n")
+        daemon_module.start_daemon(foreground=True)
+    else:
+        if daemon_module.is_running():
+            console.print("[yellow]Daemon is already running[/yellow]")
+            return
+        daemon_module.start_daemon(foreground=False)
+        console.print("[green]Daemon started[/green]")
+        console.print("[dim]Check status with: flow daemon status[/dim]")
+
+
+@daemon.command("stop")
+def daemon_stop():
+    """Stop the auto-capture daemon."""
+    import daemon as daemon_module
+
+    if daemon_module.stop_daemon():
+        console.print("[green]Daemon stopped[/green]")
+    else:
+        console.print("[yellow]Daemon was not running[/yellow]")
+
+
+@daemon.command("status")
+def daemon_status():
+    """Check daemon status."""
+    import daemon as daemon_module
+
+    status = daemon_module.daemon_status()
+
+    lines = []
+
+    if status["running"]:
+        lines.append(f"[green]Daemon is running[/green] (PID: {status['pid']})")
+        if status.get("started_at"):
+            lines.append(f"[dim]Started:[/dim] {status['started_at']}")
+        lines.append(f"[dim]Extractions:[/dim] {status['extractions_count']}")
+        lines.append(f"[dim]Sessions tracked:[/dim] {status['sessions_tracked']}")
+    else:
+        lines.append("[yellow]Daemon is not running[/yellow]")
+        lines.append("")
+        lines.append("Start with: [bold]flow daemon start[/bold]")
+
+    if status.get("recent_logs"):
+        lines.append("")
+        lines.append("[bold]Recent activity:[/bold]")
+        for log in status["recent_logs"]:
+            lines.append(f"  [dim]{log}[/dim]")
+
+    panel = Panel(
+        "\n".join(lines),
+        title="[cyan]Daemon Status[/cyan]",
+        border_style="cyan"
+    )
+    console.print(panel)
+
+
+@daemon.command("logs")
+@click.option("-n", "--lines", default=20, help="Number of lines to show")
+def daemon_logs(lines: int):
+    """Show daemon logs."""
+    import daemon as daemon_module
+    from pathlib import Path
+
+    log_file = daemon_module.LOG_FILE
+    if not log_file.exists():
+        console.print("[yellow]No logs found[/yellow]")
+        return
+
+    with open(log_file) as f:
+        all_lines = f.readlines()
+        for line in all_lines[-lines:]:
+            console.print(f"[dim]{line.rstrip()}[/dim]")
+
+
+# ============ CONTEXT COMMAND ============
+
+@cli.command()
+@click.option("--project", "-p", help="Project path (default: current directory)")
+def context(project: str):
+    """Show what Flow Guardian knows about this project.
+
+    Queries all stored memory (sessions, learnings, auto-captured insights)
+    and provides a summary of everything relevant to the current project.
+
+    This is what you'd paste into a new Claude session to give it
+    full context about your project.
+
+    Examples:
+        flow context
+        flow context --project /path/to/project
+    """
+    cwd = project or os.getcwd()
+
+    try:
+        # Build comprehensive context query
+        query = f"""Provide a comprehensive summary of everything you know about this project.
+
+Project directory: {cwd}
+
+Include:
+1. What the user has been working on (from sessions)
+2. Key decisions and their rationale
+3. Technical learnings and insights
+4. Any patterns or preferences noted
+5. Current state and likely next steps
+
+Be specific and actionable. This will be used to restore context in a new session."""
+
+        results = []
+        used_backboard = False
+
+        # Try Backboard.io
+        thread_id = os.environ.get("BACKBOARD_PERSONAL_THREAD_ID")
+        if thread_id:
+            try:
+                response = backboard_client.run_async(
+                    backboard_client.recall(thread_id, query)
+                )
+                if response:
+                    results.append(response)
+                    used_backboard = True
+            except BackboardError:
+                pass
+
+        # Add local sessions info
+        sessions = memory.list_sessions(limit=5)
+        if sessions and not used_backboard:
+            results.append("\n[bold]Recent Sessions:[/bold]")
+            for s in sessions:
+                summary = s.get("summary", "No summary")
+                branch = s.get("branch", "?")
+                elapsed = restore.calculate_time_elapsed(s.get("timestamp", ""))
+                results.append(f"  • {summary} ({branch}, {elapsed} ago)")
+
+        # Add local learnings
+        learnings = memory.search_learnings("", [])[:5]
+        if learnings and not used_backboard:
+            results.append("\n[bold]Recent Learnings:[/bold]")
+            for l in learnings:
+                text = l.get("text", "")[:100]
+                results.append(f"  • {text}")
+
+        if not results:
+            console.print("[yellow]No context found for this project.[/yellow]")
+            console.print("\nStart building memory with:")
+            console.print("  [bold]flow save[/bold]          - Save session context")
+            console.print("  [bold]flow learn \"...\"[/bold]  - Store insights")
+            console.print("  [bold]flow daemon start[/bold]  - Auto-capture from Claude Code")
+            return
+
+        content = "\n".join(results) if isinstance(results, list) else results
+
+        panel = Panel(
+            content,
+            title=f"[cyan]Project Context: {os.path.basename(cwd)}[/cyan]",
+            border_style="cyan"
+        )
+        console.print(panel)
+
+        if used_backboard:
+            console.print("\n[dim]Source: Backboard.io semantic memory[/dim]")
+        else:
+            console.print("\n[dim]Source: Local storage (connect Backboard.io for semantic search)[/dim]")
+
+    except Exception as e:
+        console.print(f"[red]Error getting context: {e}[/red]")
+        sys.exit(1)
+
+
 # ============ MAIN ============
 
 if __name__ == "__main__":

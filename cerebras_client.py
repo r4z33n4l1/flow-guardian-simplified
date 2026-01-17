@@ -11,8 +11,15 @@ from cerebras.cloud.sdk import Cerebras
 
 # ============ CONFIGURATION ============
 
-API_KEY = os.environ.get("CEREBRAS_API_KEY")
 DEFAULT_MODEL = "llama-3.3-70b"
+
+
+def _get_api_key() -> str:
+    """Get API key from environment (lazy load to support dotenv)."""
+    key = os.environ.get("CEREBRAS_API_KEY")
+    if not key:
+        raise CerebrasAuthError("CEREBRAS_API_KEY environment variable not set")
+    return key
 
 
 # ============ EXCEPTIONS ============
@@ -36,9 +43,7 @@ class CerebrasRateLimitError(CerebrasError):
 
 def _get_client() -> Cerebras:
     """Get configured Cerebras client."""
-    if not API_KEY:
-        raise CerebrasAuthError("CEREBRAS_API_KEY environment variable not set")
-    return Cerebras(api_key=API_KEY)
+    return Cerebras(api_key=_get_api_key())
 
 
 def complete(

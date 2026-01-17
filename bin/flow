@@ -1,0 +1,6 @@
+#!/bin/bash
+# Flow Guardian CLI wrapper
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$DIR/.venv/bin/activate" 2>/dev/null
+export $(grep -v '^#' "$DIR/.env" 2>/dev/null | xargs)
+python "$DIR/flow_cli.py" "$@"
