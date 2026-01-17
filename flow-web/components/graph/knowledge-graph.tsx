@@ -21,31 +21,31 @@ import { GitBranch, Lightbulb, Hash, AlertCircle, Sparkles, Filter, ZoomIn, Zoom
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 
-// Node type colors - matching Cyber Aurora theme
+// Node type colors - Warm Beige + Orange theme
 const NODE_COLORS = {
   session: {
-    bg: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
-    border: '#818cf8',
-    glow: 'rgba(99, 102, 241, 0.5)',
-    icon: '#c7d2fe'
+    bg: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+    border: '#fb923c',
+    glow: 'rgba(249, 115, 22, 0.4)',
+    icon: '#ffffff'
   },
   learning: {
-    bg: 'linear-gradient(135deg, #06b6d4 0%, #10b981 100%)',
-    border: '#34d399',
-    glow: 'rgba(16, 185, 129, 0.5)',
-    icon: '#a7f3d0'
+    bg: 'linear-gradient(135deg, #2D2A26 0%, #3d3a36 100%)',
+    border: '#6B6560',
+    glow: 'rgba(45, 42, 38, 0.4)',
+    icon: '#FAF8F5'
   },
   tag: {
-    bg: 'linear-gradient(135deg, #a855f7 0%, #ec4899 100%)',
-    border: '#c084fc',
-    glow: 'rgba(168, 85, 247, 0.5)',
-    icon: '#e9d5ff'
+    bg: 'linear-gradient(135deg, #fb923c 0%, #f97316 100%)',
+    border: '#fdba74',
+    glow: 'rgba(251, 146, 60, 0.4)',
+    icon: '#ffffff'
   },
   issue: {
-    bg: 'linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)',
-    border: '#fbbf24',
-    glow: 'rgba(245, 158, 11, 0.5)',
-    icon: '#fef3c7'
+    bg: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+    border: '#f87171',
+    glow: 'rgba(239, 68, 68, 0.4)',
+    icon: '#ffffff'
   },
 };
 
@@ -345,15 +345,15 @@ function GraphContent({ onNodeSelect }: KnowledgeGraphProps) {
       animated: edge.type === 'related',
       style: {
         stroke: edge.type === 'tagged'
-          ? 'rgba(168, 85, 247, 0.4)'
-          : 'rgba(148, 163, 184, 0.2)',
+          ? 'rgba(249, 115, 22, 0.4)'
+          : 'rgba(107, 101, 96, 0.25)',
         strokeWidth: 1.5,
       },
       markerEnd: {
         type: MarkerType.ArrowClosed,
         color: edge.type === 'tagged'
-          ? 'rgba(168, 85, 247, 0.4)'
-          : 'rgba(148, 163, 184, 0.3)',
+          ? 'rgba(249, 115, 22, 0.4)'
+          : 'rgba(107, 101, 96, 0.3)',
         width: 12,
         height: 12,
       },
@@ -383,17 +383,17 @@ function GraphContent({ onNodeSelect }: KnowledgeGraphProps) {
 
   if (loading) {
     return (
-      <div className="w-full h-full flex items-center justify-center bg-background">
+      <div className="w-full h-full flex items-center justify-center bg-[#FAF8F5]">
         <div className="text-center">
           <motion.div
             animate={{ rotate: 360 }}
             transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-            className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center"
+            className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-orange-500 flex items-center justify-center"
           >
             <Sparkles className="w-8 h-8 text-white" />
           </motion.div>
-          <p className="text-slate-400 font-medium">Loading knowledge graph...</p>
-          <p className="text-slate-600 text-sm mt-1">Mapping your AI memory</p>
+          <p className="text-[#2D2A26] font-medium">Loading knowledge graph...</p>
+          <p className="text-[#6B6560] text-sm mt-1">Mapping your AI memory</p>
         </div>
       </div>
     );
@@ -401,11 +401,11 @@ function GraphContent({ onNodeSelect }: KnowledgeGraphProps) {
 
   if (error) {
     return (
-      <div className="w-full h-full flex items-center justify-center bg-background">
-        <div className="text-center max-w-md p-8 rounded-2xl border border-red-500/20 bg-red-500/5">
-          <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
-          <p className="text-red-400 font-medium mb-2">{error}</p>
-          <p className="text-slate-500 text-sm">Make sure the backend is running on port 8090</p>
+      <div className="w-full h-full flex items-center justify-center bg-[#FAF8F5]">
+        <div className="text-center max-w-md p-8 rounded-2xl border border-red-200 bg-red-50">
+          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+          <p className="text-red-600 font-medium mb-2">{error}</p>
+          <p className="text-[#6B6560] text-sm">Make sure the backend is running on port 8090</p>
         </div>
       </div>
     );
@@ -423,39 +423,39 @@ function GraphContent({ onNodeSelect }: KnowledgeGraphProps) {
         className="absolute top-4 left-4 z-10 space-y-3"
       >
         {/* Stats */}
-        <div className="rounded-2xl p-4 border border-white/[0.08] bg-slate-900/80 backdrop-blur-xl">
+        <div className="rounded-2xl p-4 border border-[#E8E0D4] bg-white shadow-sm">
           <div className="flex items-center gap-2 mb-3">
-            <Sparkles className="w-4 h-4 text-purple-400" />
-            <span className="text-sm font-medium text-white">Knowledge Graph</span>
+            <Sparkles className="w-4 h-4 text-orange-500" />
+            <span className="text-sm font-medium text-[#2D2A26]">Knowledge Graph</span>
           </div>
           <div className="flex gap-6">
             <div className="text-center">
-              <div className="text-2xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
+              <div className="text-2xl font-bold text-orange-500">
                 {stats?.sessions || 0}
               </div>
-              <div className="text-xs text-slate-500 mt-0.5">Sessions</div>
+              <div className="text-xs text-[#6B6560] mt-0.5">Sessions</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold bg-gradient-to-r from-cyan-400 to-emerald-400 bg-clip-text text-transparent">
+              <div className="text-2xl font-bold text-[#2D2A26]">
                 {stats?.learnings || 0}
               </div>
-              <div className="text-xs text-slate-500 mt-0.5">Learnings</div>
+              <div className="text-xs text-[#6B6560] mt-0.5">Learnings</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+              <div className="text-2xl font-bold text-orange-400">
                 {stats?.tags || 0}
               </div>
-              <div className="text-xs text-slate-500 mt-0.5">Tags</div>
+              <div className="text-xs text-[#6B6560] mt-0.5">Tags</div>
             </div>
           </div>
         </div>
 
         {/* Filters */}
-        <div className="rounded-2xl p-4 border border-white/[0.08] bg-slate-900/80 backdrop-blur-xl">
+        <div className="rounded-2xl p-4 border border-[#E8E0D4] bg-white shadow-sm">
           <div className="flex items-center gap-2 mb-3">
-            <Filter className="w-4 h-4 text-slate-400" />
-            <span className="text-sm font-medium text-white">Filters</span>
-            <Badge variant="secondary" className="ml-auto bg-slate-800 text-slate-400 text-xs">
+            <Filter className="w-4 h-4 text-[#6B6560]" />
+            <span className="text-sm font-medium text-[#2D2A26]">Filters</span>
+            <Badge variant="secondary" className="ml-auto bg-[#F5F0E8] text-[#6B6560] text-xs">
               {visibleCount}/{totalCount}
             </Badge>
           </div>
@@ -463,21 +463,21 @@ function GraphContent({ onNodeSelect }: KnowledgeGraphProps) {
             <FilterButton
               active={showSessions}
               onClick={() => setShowSessions(!showSessions)}
-              color="from-indigo-500 to-purple-500"
+              color="from-orange-500 to-orange-600"
               label="Sessions"
               count={stats?.sessions || 0}
             />
             <FilterButton
               active={showLearnings}
               onClick={() => setShowLearnings(!showLearnings)}
-              color="from-cyan-500 to-emerald-500"
+              color="from-[#2D2A26] to-[#3d3a36]"
               label="Learnings"
               count={stats?.learnings || 0}
             />
             <FilterButton
               active={showTags}
               onClick={() => setShowTags(!showTags)}
-              color="from-purple-500 to-pink-500"
+              color="from-orange-400 to-orange-500"
               label="Tags"
               count={stats?.tags || 0}
             />
@@ -491,12 +491,12 @@ function GraphContent({ onNodeSelect }: KnowledgeGraphProps) {
         animate={{ opacity: 1, x: 0 }}
         className="absolute top-4 right-4 z-10"
       >
-        <div className="rounded-2xl p-2 border border-white/[0.08] bg-slate-900/80 backdrop-blur-xl flex flex-col gap-1">
+        <div className="rounded-2xl p-2 border border-[#E8E0D4] bg-white shadow-sm flex flex-col gap-1">
           <Button
             variant="ghost"
             size="icon"
             onClick={() => zoomIn({ duration: 300 })}
-            className="h-9 w-9 text-slate-400 hover:text-white hover:bg-white/10"
+            className="h-9 w-9 text-[#6B6560] hover:text-orange-500 hover:bg-orange-50"
           >
             <ZoomIn className="w-4 h-4" />
           </Button>
@@ -504,16 +504,16 @@ function GraphContent({ onNodeSelect }: KnowledgeGraphProps) {
             variant="ghost"
             size="icon"
             onClick={() => zoomOut({ duration: 300 })}
-            className="h-9 w-9 text-slate-400 hover:text-white hover:bg-white/10"
+            className="h-9 w-9 text-[#6B6560] hover:text-orange-500 hover:bg-orange-50"
           >
             <ZoomOut className="w-4 h-4" />
           </Button>
-          <div className="h-px bg-white/10 my-1" />
+          <div className="h-px bg-[#E8E0D4] my-1" />
           <Button
             variant="ghost"
             size="icon"
             onClick={handleFitView}
-            className="h-9 w-9 text-slate-400 hover:text-white hover:bg-white/10"
+            className="h-9 w-9 text-[#6B6560] hover:text-orange-500 hover:bg-orange-50"
           >
             <Maximize2 className="w-4 h-4" />
           </Button>
@@ -524,7 +524,7 @@ function GraphContent({ onNodeSelect }: KnowledgeGraphProps) {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 text-xs text-slate-500 bg-slate-900/60 px-4 py-2 rounded-full backdrop-blur"
+        className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 text-xs text-[#6B6560] bg-white/90 px-4 py-2 rounded-full border border-[#E8E0D4] shadow-sm"
       >
         Click a node to see details • Drag to rearrange • Scroll to zoom
       </motion.div>
@@ -544,7 +544,7 @@ function GraphContent({ onNodeSelect }: KnowledgeGraphProps) {
         defaultViewport={{ x: 0, y: 0, zoom: 0.5 }}
         proOptions={{ hideAttribution: true }}
       >
-        <Background color="rgba(148, 163, 184, 0.05)" gap={32} size={1} />
+        <Background color="rgba(232, 224, 212, 0.5)" gap={32} size={1} />
       </ReactFlow>
     </div>
   );
@@ -569,17 +569,17 @@ function FilterButton({
       onClick={onClick}
       className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all ${
         active
-          ? 'bg-white/5 border border-white/10'
+          ? 'bg-[#F5F0E8] border border-[#E8E0D4]'
           : 'opacity-50 hover:opacity-75'
       }`}
     >
       <div className={`w-4 h-4 rounded bg-gradient-to-r ${color}`} />
-      <span className="text-sm text-slate-300 flex-1 text-left">{label}</span>
-      <span className="text-xs text-slate-500">{count}</span>
+      <span className="text-sm text-[#2D2A26] flex-1 text-left">{label}</span>
+      <span className="text-xs text-[#6B6560]">{count}</span>
       {active ? (
-        <Eye className="w-3.5 h-3.5 text-slate-400" />
+        <Eye className="w-3.5 h-3.5 text-[#6B6560]" />
       ) : (
-        <EyeOff className="w-3.5 h-3.5 text-slate-600" />
+        <EyeOff className="w-3.5 h-3.5 text-[#9a918a]" />
       )}
     </button>
   );

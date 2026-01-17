@@ -69,24 +69,24 @@ function StatCard({ title, value, icon, gradient, glowColor, delay = 0 }: StatCa
         style={{ background: glowColor }}
       />
 
-      {/* Card - Prussian blue with gold border on hover */}
-      <div className="relative overflow-hidden rounded-2xl border border-[#fca311]/10 hover:border-[#fca311]/30 bg-[#14213d]/80 backdrop-blur-xl p-6 transition-colors duration-300">
+      {/* Card - white with warm border on hover */}
+      <div className="relative overflow-hidden rounded-2xl border border-[#E8E0D4] hover:border-orange-300 bg-white p-6 transition-colors duration-300 shadow-sm">
         <div className="relative flex items-start justify-between">
           <div className="space-y-3">
-            <p className="text-sm font-medium text-[#e5e5e5]/70 tracking-wide uppercase">
+            <p className="text-sm font-medium text-[#6B6560] tracking-wide uppercase">
               {title}
             </p>
-            <p className="text-4xl font-bold text-white tracking-tight">
+            <p className="text-4xl font-bold text-[#2D2A26] tracking-tight">
               <AnimatedCounter value={value} />
             </p>
           </div>
 
-          {/* Icon with gold background */}
+          {/* Icon with orange background */}
           <div
             className="p-3 rounded-xl"
             style={{ background: gradient }}
           >
-            <div className="text-black">{icon}</div>
+            <div className="text-white">{icon}</div>
           </div>
         </div>
       </div>
@@ -139,32 +139,32 @@ export function StatsCards() {
         title="Sessions"
         value={stats?.sessions_count || 0}
         icon={<GitBranch className="w-6 h-6" />}
-        gradient="linear-gradient(135deg, #fca311 0%, #d4a017 100%)"
-        glowColor="rgba(252, 163, 17, 0.25)"
+        gradient="linear-gradient(135deg, #f97316 0%, #ea580c 100%)"
+        glowColor="rgba(249, 115, 22, 0.2)"
         delay={0}
       />
       <StatCard
         title="Learnings"
         value={stats?.learnings_count || 0}
         icon={<Lightbulb className="w-6 h-6" />}
-        gradient="linear-gradient(135deg, #fca311 0%, #d4a017 100%)"
-        glowColor="rgba(252, 163, 17, 0.25)"
+        gradient="linear-gradient(135deg, #f97316 0%, #ea580c 100%)"
+        glowColor="rgba(249, 115, 22, 0.2)"
         delay={0.1}
       />
       <StatCard
         title="Team Insights"
         value={stats?.team_learnings || 0}
         icon={<Users className="w-6 h-6" />}
-        gradient="linear-gradient(135deg, #fca311 0%, #d4a017 100%)"
-        glowColor="rgba(252, 163, 17, 0.25)"
+        gradient="linear-gradient(135deg, #f97316 0%, #ea580c 100%)"
+        glowColor="rgba(249, 115, 22, 0.2)"
         delay={0.2}
       />
       <StatCard
         title="Active Tags"
         value={stats?.top_tags?.length || 0}
         icon={<TrendingUp className="w-6 h-6" />}
-        gradient="linear-gradient(135deg, #fca311 0%, #d4a017 100%)"
-        glowColor="rgba(252, 163, 17, 0.25)"
+        gradient="linear-gradient(135deg, #f97316 0%, #ea580c 100%)"
+        glowColor="rgba(249, 115, 22, 0.2)"
         delay={0.3}
       />
     </div>
@@ -197,21 +197,21 @@ export function TopTagsCard() {
   const topTags = stats?.top_tags?.slice(0, 8) || [];
   const maxCount = topTags.length > 0 ? topTags[0].count : 1;
 
-  // Gold-based color variations for tags
+  // Orange-based color variations for tags
   const tagColors = [
-    'from-[#fca311] to-[#d4a017]',
-    'from-[#fca311]/80 to-[#d4a017]/80',
-    'from-[#fca311]/60 to-[#d4a017]/60',
-    'from-[#fca311]/50 to-[#d4a017]/50',
-    'from-[#fca311]/40 to-[#d4a017]/40',
-    'from-[#fca311]/30 to-[#d4a017]/30',
-    'from-[#fca311]/25 to-[#d4a017]/25',
-    'from-[#fca311]/20 to-[#d4a017]/20',
+    'from-orange-500 to-orange-600',
+    'from-orange-500/80 to-orange-600/80',
+    'from-orange-500/60 to-orange-600/60',
+    'from-orange-500/50 to-orange-600/50',
+    'from-orange-500/40 to-orange-600/40',
+    'from-orange-500/30 to-orange-600/30',
+    'from-orange-500/25 to-orange-600/25',
+    'from-orange-500/20 to-orange-600/20',
   ];
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-[#fca311]/10 bg-[#14213d]/80 backdrop-blur-xl p-6">
+      <div className="rounded-2xl border border-[#E8E0D4] bg-white p-6 shadow-sm">
         <div className="h-6 w-32 shimmer rounded mb-6" />
         <div className="space-y-4">
           {[...Array(5)].map((_, i) => (
@@ -227,16 +227,16 @@ export function TopTagsCard() {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.4 }}
-      className="rounded-2xl border border-[#fca311]/10 hover:border-[#fca311]/20 bg-[#14213d]/80 backdrop-blur-xl p-6 transition-colors duration-300"
+      className="rounded-2xl border border-[#E8E0D4] hover:border-orange-200 bg-white p-6 transition-colors duration-300 shadow-sm"
     >
       <div className="flex items-center gap-2 mb-6">
-        <Sparkles className="w-5 h-5 text-[#fca311]" />
-        <h3 className="text-lg font-semibold text-white">Popular Tags</h3>
+        <Sparkles className="w-5 h-5 text-orange-500" />
+        <h3 className="text-lg font-semibold text-[#2D2A26]">Popular Tags</h3>
       </div>
 
       <div className="space-y-4">
         {topTags.length === 0 ? (
-          <p className="text-[#e5e5e5]/50 text-sm">No tags yet</p>
+          <p className="text-[#6B6560] text-sm">No tags yet</p>
         ) : (
           topTags.map((tag, index) => (
             <motion.div
@@ -247,14 +247,14 @@ export function TopTagsCard() {
               className="group"
             >
               <div className="flex items-center justify-between mb-1.5">
-                <span className="text-sm font-medium text-[#e5e5e5]/80 group-hover:text-white transition-colors">
+                <span className="text-sm font-medium text-[#6B6560] group-hover:text-[#2D2A26] transition-colors">
                   #{tag.tag}
                 </span>
-                <span className="text-xs font-mono text-[#e5e5e5]/50">
+                <span className="text-xs font-mono text-[#6B6560]">
                   {tag.count.toLocaleString()}
                 </span>
               </div>
-              <div className="h-2 bg-black/30 rounded-full overflow-hidden">
+              <div className="h-2 bg-[#F5F0E8] rounded-full overflow-hidden">
                 <motion.div
                   initial={{ width: 0 }}
                   animate={{ width: `${(tag.count / maxCount) * 100}%` }}

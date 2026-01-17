@@ -54,7 +54,7 @@ function renderMarkdown(content: string): React.ReactNode {
         elements.push(
           <pre
             key={`code-${lineIndex}`}
-            className="bg-muted rounded-md p-3 overflow-x-auto text-sm my-2"
+            className="bg-[#F5F0E8] border border-[#E8E0D4] rounded-md p-3 overflow-x-auto text-sm my-2 text-[#2D2A26]"
           >
             <code>{codeBlockContent.join("\n")}</code>
           </pre>
@@ -81,7 +81,7 @@ function renderMarkdown(content: string): React.ReactNode {
           return (
             <code
               key={partIndex}
-              className="bg-muted px-1.5 py-0.5 rounded text-sm"
+              className="bg-[#F5F0E8] border border-[#E8E0D4] px-1.5 py-0.5 rounded text-sm text-[#2D2A26]"
             >
               {part.slice(1, -1)}
             </code>
@@ -194,8 +194,8 @@ export function MessageBubble({ message, className }: MessageBubbleProps) {
         <AvatarFallback
           className={cn(
             isUser
-              ? "bg-primary text-primary-foreground"
-              : "bg-muted text-muted-foreground"
+              ? "bg-orange-500 text-white"
+              : "bg-[#F5F0E8] text-[#6B6560]"
           )}
         >
           {isUser ? <User className="size-4" /> : <Bot className="size-4" />}
@@ -212,16 +212,16 @@ export function MessageBubble({ message, className }: MessageBubbleProps) {
           className={cn(
             "rounded-2xl px-4 py-2 text-sm",
             isUser
-              ? "bg-primary text-primary-foreground rounded-tr-sm"
-              : "bg-muted text-foreground rounded-tl-sm"
+              ? "bg-orange-500 text-white rounded-tr-sm"
+              : "bg-white border border-[#E8E0D4] text-[#2D2A26] rounded-tl-sm shadow-sm"
           )}
         >
-          <div className="prose prose-sm dark:prose-invert max-w-none">
+          <div className="prose prose-sm max-w-none prose-headings:text-[#2D2A26] prose-p:text-inherit prose-li:text-inherit prose-strong:text-inherit">
             {renderMarkdown(message.content)}
           </div>
         </div>
 
-        <span className="text-xs text-muted-foreground px-1">
+        <span className="text-xs text-[#6B6560] px-1">
           {formatTimestamp(message.timestamp)}
         </span>
       </div>

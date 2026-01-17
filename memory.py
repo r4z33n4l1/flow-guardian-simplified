@@ -183,16 +183,17 @@ def get_latest_session() -> Optional[dict]:
     return load_session(latest.get("id", ""))
 
 
-def list_sessions(limit: int = 10, branch: Optional[str] = None) -> list[dict]:
+def list_sessions(limit: int = 10, branch: Optional[str] = None, full: bool = False) -> list[dict]:
     """
-    List session summaries.
+    List session summaries or full session data.
 
     Args:
         limit: Maximum number of sessions to return (default: 10)
         branch: Filter by branch name (optional)
+        full: If True, return full session data instead of just summaries (default: False)
 
     Returns:
-        List of session summary dictionaries
+        List of session dictionaries (summaries or full data)
     """
     init_storage()
 
@@ -205,7 +206,22 @@ def list_sessions(limit: int = 10, branch: Optional[str] = None) -> list[dict]:
         index = [s for s in index if s.get("branch") == branch]
 
     # Apply limit
-    return index[:limit]
+    sessions = index[:limit]
+
+    # If full data requested, load each session
+    if full:
+        full_sessions = []
+        for summary in sessions:
+            session_id = summary.get("id", "")
+            full_data = load_session(session_id)
+            if full_data:
+                full_sessions.append(full_data)
+            else:
+                # Fallback to summary if full data not found
+                full_sessions.append(summary)
+        return full_sessions
+
+    return sessions
 
 
 # ============ LEARNINGS MANAGEMENT ============

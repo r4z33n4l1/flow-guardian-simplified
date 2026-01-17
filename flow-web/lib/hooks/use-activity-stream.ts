@@ -5,12 +5,23 @@ import { useEffect, useState, useCallback } from "react";
 export interface Session {
   id: string;
   timestamp: string;
-  branch: string;
-  summary: string;
+  branch?: string;
+  summary?: string;
+  // Full session data structure
   context?: {
-    decisions?: string[];
+    summary?: string;
+    hypothesis?: string | null;
+    files?: string[];
     next_steps?: string[];
     blockers?: string[];
+  };
+  decisions?: string[];
+  blockers?: string[];
+  git?: {
+    branch?: string;
+  };
+  metadata?: {
+    tags?: string[];
   };
 }
 

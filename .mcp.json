@@ -1,17 +1,18 @@
 {
   "mcpServers": {
     "flow-guardian": {
-      "command": "/opt/homebrew/bin/python3.10",
+      "command": "/Users/mihajlomicic/Desktop/flow-guardian/.venv/bin/python",
       "args": [
-        "/Users/razeenali/Projs/Side/8090hack/flow-guardian/server.py",
-        "mcp"
+        "/Users/mihajlomicic/Desktop/flow-guardian/mcp_server.py"
       ],
       "env": {
-        "BACKBOARD_API_KEY": "espr_hO-fAjLo-qsZFA7J_gHnH4eWLbTB5f2TgiADXb6VmKM",
-        "CEREBRAS_API_KEY": "csk-nn6tpycm82nf94pxedeht9edhh5tkd6dvjt2nwvdmw28ryf8",
-        "FLOW_GUARDIAN_USER": "razeenali",
-        "BACKBOARD_PERSONAL_ASSISTANT_ID": "c9c6eb20-e092-4664-9ae5-2961744b959e",
-        "BACKBOARD_PERSONAL_THREAD_ID": "e8e775f4-3328-4a21-b159-17a5e58eecca"
+        "CEREBRAS_API_KEY": "csk-y29pkh5trwj5re5prt5e48xkd46kyn8vm62t66hdrdk49pp9",
+        "BACKBOARD_API_KEY": "espr_zU7fSO4Wwrg6boL8paV3eYd_lO8Od0Ru9gZ0adhetfo",
+        "BACKBOARD_PERSONAL_ASSISTANT_ID": "2ec375c6-6045-42e1-8b59-a028ceb02817",
+        "BACKBOARD_PERSONAL_THREAD_ID": "de07d09c-74be-4bab-8f15-066e5297d2f1",
+        "BACKBOARD_TEAM_ASSISTANT_ID": "7cdca52b-803d-4d29-9c3f-74d26dcae5f2",
+        "BACKBOARD_TEAM_THREAD_ID": "249ec54b-8f66-4811-bde5-5bfa95c0db8f",
+        "FLOW_GUARDIAN_USER": "mihajlo"
       }
     }
   }

@@ -56,7 +56,7 @@ function TimelineItemCard({ item, index }: { item: TimelineItem; index: number }
       className="relative pl-8"
     >
       {/* Timeline line */}
-      <div className="absolute left-3 top-0 bottom-0 w-px bg-gradient-to-b from-[#fca311]/30 via-[#14213d] to-transparent" />
+      <div className="absolute left-3 top-0 bottom-0 w-px bg-gradient-to-b from-orange-300 via-[#E8E0D4] to-transparent" />
 
       {/* Timeline dot */}
       <motion.div
@@ -65,21 +65,21 @@ function TimelineItemCard({ item, index }: { item: TimelineItem; index: number }
         transition={{ delay: Math.min(index * 0.03, 0.3) + 0.1, type: 'spring' }}
         className={`absolute left-0 top-3 w-6 h-6 rounded-full flex items-center justify-center border-2 ${
           isSession
-            ? 'bg-[#fca311]/20 border-[#fca311]'
-            : 'bg-[#e5e5e5]/10 border-[#e5e5e5]/50'
+            ? 'bg-orange-50 border-orange-500'
+            : 'bg-[#F5F0E8] border-[#E8E0D4]'
         }`}
       >
         {isSession ? (
-          <GitBranch className="w-3 h-3 text-[#fca311]" />
+          <GitBranch className="w-3 h-3 text-orange-500" />
         ) : (
-          <Lightbulb className="w-3 h-3 text-[#e5e5e5]" />
+          <Lightbulb className="w-3 h-3 text-[#6B6560]" />
         )}
       </motion.div>
 
       {/* Content */}
       <div
-        className={`group rounded-xl border bg-[#14213d]/60 backdrop-blur p-4 mb-3 transition-all cursor-pointer hover:bg-[#14213d]/80 ${
-          isSession ? 'border-[#fca311]/20 hover:border-[#fca311]/40' : 'border-[#e5e5e5]/10 hover:border-[#e5e5e5]/20'
+        className={`group rounded-xl border bg-white p-4 mb-3 transition-all cursor-pointer hover:bg-[#F5F0E8] ${
+          isSession ? 'border-orange-200 hover:border-orange-300' : 'border-[#E8E0D4] hover:border-[#d4ccc0]'
         }`}
         onClick={() => setExpanded(!expanded)}
       >
@@ -90,22 +90,22 @@ function TimelineItemCard({ item, index }: { item: TimelineItem; index: number }
                 variant="outline"
                 className={
                   isSession
-                    ? 'bg-[#fca311]/10 text-[#fca311] border-[#fca311]/30 text-xs font-medium'
-                    : 'bg-[#e5e5e5]/5 text-[#e5e5e5] border-[#e5e5e5]/20 text-xs font-medium'
+                    ? 'bg-orange-50 text-orange-600 border-orange-200 text-xs font-medium'
+                    : 'bg-[#F5F0E8] text-[#6B6560] border-[#E8E0D4] text-xs font-medium'
                 }
               >
                 {isSession ? 'Session' : 'Learning'}
               </Badge>
-              <span className="text-xs text-[#e5e5e5]/50 flex items-center gap-1">
+              <span className="text-xs text-[#6B6560] flex items-center gap-1">
                 <Clock className="w-3 h-3" />
                 {formatTimeAgo(item.timestamp)}
               </span>
             </div>
-            <p className="text-sm text-white/90 leading-relaxed line-clamp-2">
+            <p className="text-sm text-[#2D2A26] leading-relaxed line-clamp-2">
               {isSession ? data.summary : data.insight}
             </p>
           </div>
-          <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 text-[#e5e5e5]/50 hover:text-[#fca311]">
+          <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 text-[#6B6560] hover:text-orange-500">
             {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </Button>
         </div>
@@ -118,9 +118,9 @@ function TimelineItemCard({ item, index }: { item: TimelineItem; index: number }
               exit={{ height: 0, opacity: 0 }}
               className="overflow-hidden"
             >
-              <div className="mt-3 pt-3 border-t border-[#fca311]/10">
+              <div className="mt-3 pt-3 border-t border-[#E8E0D4]">
                 {isSession && data.branch && (
-                  <div className="flex items-center gap-2 text-xs text-[#e5e5e5]/60 mb-2">
+                  <div className="flex items-center gap-2 text-xs text-[#6B6560] mb-2">
                     <GitBranch className="w-3 h-3" />
                     <span className="font-mono">{data.branch}</span>
                   </div>
@@ -131,19 +131,19 @@ function TimelineItemCard({ item, index }: { item: TimelineItem; index: number }
                       <Badge
                         key={tag}
                         variant="secondary"
-                        className="bg-[#fca311]/10 text-[#fca311] border-[#fca311]/20 text-xs"
+                        className="bg-orange-50 text-orange-600 border-orange-200 text-xs"
                       >
                         #{tag}
                       </Badge>
                     ))}
                     {data.tags.length > 5 && (
-                      <Badge variant="secondary" className="bg-[#14213d] text-[#e5e5e5]/60 text-xs">
+                      <Badge variant="secondary" className="bg-[#F5F0E8] text-[#6B6560] text-xs">
                         +{data.tags.length - 5} more
                       </Badge>
                     )}
                   </div>
                 )}
-                <p className="text-xs text-[#e5e5e5]/40 mt-3">
+                <p className="text-xs text-[#9a918a] mt-3">
                   {new Date(item.timestamp).toLocaleString()}
                 </p>
               </div>
@@ -256,11 +256,11 @@ export function ActivityTimeline({ initialLimit = 10 }: ActivityTimelineProps) {
   if (items.length === 0) {
     return (
       <div className="text-center py-12">
-        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#14213d] flex items-center justify-center">
-          <Lightbulb className="w-8 h-8 text-[#fca311]/40" />
+        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#F5F0E8] flex items-center justify-center">
+          <Lightbulb className="w-8 h-8 text-orange-300" />
         </div>
-        <p className="text-[#e5e5e5]/80 font-medium">No activity yet</p>
-        <p className="text-[#e5e5e5]/40 text-sm mt-1">Sessions and learnings will appear here</p>
+        <p className="text-[#2D2A26] font-medium">No activity yet</p>
+        <p className="text-[#6B6560] text-sm mt-1">Sessions and learnings will appear here</p>
       </div>
     );
   }
@@ -273,7 +273,7 @@ export function ActivityTimeline({ initialLimit = 10 }: ActivityTimelineProps) {
           variant="ghost"
           size="sm"
           onClick={refresh}
-          className="text-[#e5e5e5]/50 hover:text-[#fca311]"
+          className="text-[#6B6560] hover:text-orange-500"
         >
           <RefreshCw className="w-4 h-4 mr-2" />
           Refresh
@@ -299,7 +299,7 @@ export function ActivityTimeline({ initialLimit = 10 }: ActivityTimelineProps) {
             size="sm"
             onClick={loadMore}
             disabled={loadingMore}
-            className="border-[#fca311]/20 text-[#e5e5e5]/70 hover:text-[#fca311] hover:border-[#fca311]/40 hover:bg-[#fca311]/5"
+            className="border-[#E8E0D4] text-[#6B6560] hover:text-orange-500 hover:border-orange-300 hover:bg-orange-50"
           >
             {loadingMore ? (
               <>

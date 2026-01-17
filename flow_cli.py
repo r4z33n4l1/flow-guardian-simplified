@@ -8,8 +8,11 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-import click
+# Load environment variables BEFORE importing modules that use them
 from dotenv import load_dotenv
+load_dotenv()
+
+import click
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -20,9 +23,6 @@ import memory
 import restore
 import backboard_client
 from backboard_client import BackboardError, BackboardAuthError
-
-# Load environment variables
-load_dotenv()
 
 # Rich console for beautiful output
 console = Console()
@@ -916,24 +916,36 @@ def inject(quiet: bool, level: str, save_state: bool):
 
 # ============ SETUP COMMAND ============
 
-# Hook script templates
-FLOW_INJECT_HOOK = '''#!/bin/bash
+# Hook script templates - {flow_guardian_dir} will be replaced at runtime
+FLOW_INJECT_HOOK_TEMPLATE = '''#!/bin/bash
 # Flow Guardian SessionStart Hook
 # Injects project context at session start
 
+FLOW_GUARDIAN_DIR="{flow_guardian_dir}"
+
 if [ -d ".flow-guardian" ]; then
-    [ -f ".env" ] && export $(grep -v '^#' .env | xargs)
-    flow inject --quiet 2>/dev/null
+    # Load project .env if exists
+    [ -f ".env" ] && export $(grep -v '^#' .env | xargs 2>/dev/null)
+    # Load flow-guardian .env for API keys
+    [ -f "$FLOW_GUARDIAN_DIR/.env" ] && export $(grep -v '^#' "$FLOW_GUARDIAN_DIR/.env" | xargs 2>/dev/null)
+    # Run inject with the venv's Python directly
+    cd "$FLOW_GUARDIAN_DIR" && .venv/bin/python flow_cli.py inject --quiet 2>/dev/null
 fi
 '''
 
-FLOW_PRECOMPACT_HOOK = '''#!/bin/bash
+FLOW_PRECOMPACT_HOOK_TEMPLATE = '''#!/bin/bash
 # Flow Guardian PreCompact Hook
 # Saves state before context compaction
 
+FLOW_GUARDIAN_DIR="{flow_guardian_dir}"
+
 if [ -d ".flow-guardian" ]; then
-    [ -f ".env" ] && export $(grep -v '^#' .env | xargs)
-    flow inject --quiet --save-state 2>/dev/null
+    # Load project .env if exists
+    [ -f ".env" ] && export $(grep -v '^#' .env | xargs 2>/dev/null)
+    # Load flow-guardian .env for API keys
+    [ -f "$FLOW_GUARDIAN_DIR/.env" ] && export $(grep -v '^#' "$FLOW_GUARDIAN_DIR/.env" | xargs 2>/dev/null)
+    # Run inject with the venv's Python directly
+    cd "$FLOW_GUARDIAN_DIR" && .venv/bin/python flow_cli.py inject --quiet --save-state 2>/dev/null
 fi
 '''
 
@@ -1054,10 +1066,13 @@ def setup(global_mode: bool, check_mode: bool, force: bool):
         else:
             results.append((".claude/hooks/ exists", True))
 
-        # Create hook scripts
+        # Create hook scripts with flow-guardian path substituted
+        flow_guardian_dir = Path(__file__).parent.resolve()
+
         inject_hook_path = hooks_dir / "flow-inject.sh"
         if not inject_hook_path.exists() or force:
-            inject_hook_path.write_text(FLOW_INJECT_HOOK)
+            hook_content = FLOW_INJECT_HOOK_TEMPLATE.format(flow_guardian_dir=flow_guardian_dir)
+            inject_hook_path.write_text(hook_content)
             inject_hook_path.chmod(0o755)  # Make executable
             results.append(("Created .claude/hooks/flow-inject.sh", True))
         else:
@@ -1065,7 +1080,8 @@ def setup(global_mode: bool, check_mode: bool, force: bool):
 
         precompact_hook_path = hooks_dir / "flow-precompact.sh"
         if not precompact_hook_path.exists() or force:
-            precompact_hook_path.write_text(FLOW_PRECOMPACT_HOOK)
+            hook_content = FLOW_PRECOMPACT_HOOK_TEMPLATE.format(flow_guardian_dir=flow_guardian_dir)
+            precompact_hook_path.write_text(hook_content)
             precompact_hook_path.chmod(0o755)  # Make executable
             results.append(("Created .claude/hooks/flow-precompact.sh", True))
         else:

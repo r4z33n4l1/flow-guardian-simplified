@@ -13,41 +13,41 @@ export default function GraphPage() {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
 
   return (
-    <div className="h-screen w-screen bg-background flex flex-col overflow-hidden">
+    <div className="h-screen w-screen bg-[#FAF8F5] flex flex-col overflow-hidden">
       {/* Header */}
       <motion.header
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="h-16 border-b border-white/[0.08] flex items-center justify-between px-6 bg-slate-900/50 backdrop-blur-xl"
+        className="h-16 border-b border-[#E8E0D4] flex items-center justify-between px-6 bg-[#FAF8F5]/80 backdrop-blur-xl"
       >
         <div className="flex items-center gap-4">
           <Link href="/">
-            <Button variant="ghost" size="sm" className="gap-2 text-slate-400 hover:text-white hover:bg-white/10">
+            <Button variant="ghost" size="sm" className="gap-2 text-[#6B6560] hover:text-orange-500 hover:bg-orange-50">
               <ArrowLeft className="w-4 h-4" />
               Back
             </Button>
           </Link>
-          <div className="w-px h-6 bg-white/10" />
+          <div className="w-px h-6 bg-[#E8E0D4]" />
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500">
+            <div className="p-2 rounded-xl bg-orange-500">
               <Network className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-lg font-semibold text-white">Knowledge Graph</h1>
-              <p className="text-xs text-slate-500">Visualize your AI memory</p>
+              <h1 className="text-lg font-semibold text-[#2D2A26]">Knowledge Graph</h1>
+              <p className="text-xs text-[#6B6560]">Visualize your AI memory</p>
             </div>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
           <Link href="/dashboard">
-            <Button variant="ghost" size="sm" className="gap-2 text-slate-400 hover:text-white hover:bg-white/10">
+            <Button variant="ghost" size="sm" className="gap-2 text-[#6B6560] hover:text-orange-500 hover:bg-orange-50">
               <LayoutDashboard className="w-4 h-4" />
               Dashboard
             </Button>
           </Link>
           <Link href="/">
-            <Button variant="ghost" size="sm" className="gap-2 text-slate-400 hover:text-white hover:bg-white/10">
+            <Button variant="ghost" size="sm" className="gap-2 text-[#6B6560] hover:text-orange-500 hover:bg-orange-50">
               <MessageSquare className="w-4 h-4" />
               Chat
             </Button>

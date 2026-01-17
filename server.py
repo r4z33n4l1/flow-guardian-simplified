@@ -1102,16 +1102,30 @@ Return ONLY the JSON array."""
         page: int = Query(default=1, ge=1),
         limit: int = Query(default=10, ge=1, le=100),
         branch: Optional[str] = Query(default=None),
+        full: bool = Query(default=True),
     ):
         """List sessions with pagination."""
-        # Get all sessions (we need total count for pagination)
-        all_sessions = service.memory.list_sessions(limit=1000, branch=branch)
-        total = len(all_sessions)
+        # Get all session summaries first for counting
+        all_summaries = service.memory.list_sessions(limit=1000, branch=branch, full=False)
+        total = len(all_summaries)
 
-        # Apply pagination
+        # Apply pagination to summaries
         start = (page - 1) * limit
         end = start + limit
-        sessions = all_sessions[start:end]
+        paginated_summaries = all_summaries[start:end]
+
+        # If full data requested, load full sessions for the paginated set
+        if full and paginated_summaries:
+            sessions = []
+            for summary in paginated_summaries:
+                session_id = summary.get("id", "")
+                full_data = service.memory.load_session(session_id)
+                if full_data:
+                    sessions.append(full_data)
+                else:
+                    sessions.append(summary)
+        else:
+            sessions = paginated_summaries
 
         return {
             "sessions": sessions,
