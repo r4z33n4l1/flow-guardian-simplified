@@ -46,7 +46,7 @@ while true; do
         break
     fi
 
-    # Run Ralph iteration with selected prompt
+    # Run iteration with selected prompt
     # -p: Headless mode (non-interactive, reads from stdin)
     # --dangerously-skip-permissions: Auto-approve all tool calls (YOLO mode)
     # --output-format=stream-json: Structured output for logging/monitoring

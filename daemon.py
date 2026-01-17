@@ -299,6 +299,19 @@ async def process_session(session_path: Path, state: dict) -> bool:
         log(f"Extracted {len(insights)} insights from session {session_id[:8]}")
         state["extractions_count"] = state.get("extractions_count", 0) + 1
 
+        # Update handoff.yaml with latest insight
+        try:
+            import handoff
+            # Get the most recent insight to update "now" field
+            latest_insight = insights[-1] if insights else None
+            if latest_insight and cwd:
+                handoff.update_handoff({
+                    "now": latest_insight.get("insight", "Working on project"),
+                    "session_id": session_id,
+                }, project_root=Path(cwd) if cwd else None)
+        except Exception as e:
+            log(f"Could not update handoff.yaml: {e}")
+
     # Update extraction time
     session_state["last_extraction"] = datetime.now().isoformat()
     session_state["pending_messages"] = 0

@@ -136,6 +136,9 @@ async def create_assistant(name: str, llm_provider: str = "cerebras") -> str:
         headers=_headers(),
         json={
             "name": name,
+            "llm_provider": llm_provider,
+            "llm_model_name": "gemini-2.5-flash",
+            "tools": [],
             "description": name,
         }
     )
@@ -198,6 +201,9 @@ async def store_message(
         Response from API
     """
     import json
+    if not API_KEY:
+        raise BackboardAuthError("BACKBOARD_API_KEY environment variable not set")
+
     # Backboard API uses multipart/form-data with string values
     form_data = {
         "content": content,
@@ -207,9 +213,7 @@ async def store_message(
         form_data["metadata"] = json.dumps(metadata)
 
     # Don't include Content-Type header for form data - httpx sets it
-    headers = {"X-API-Key": API_KEY} if API_KEY else {}
-    if not API_KEY:
-        raise BackboardAuthError("BACKBOARD_API_KEY environment variable not set")
+    headers = {"X-API-Key": API_KEY}
 
     response = await _request_with_retry(
         "post",
