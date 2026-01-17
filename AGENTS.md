@@ -5,8 +5,9 @@
 ## Build & Run
 
 ```bash
-# Install dependencies
+# Install dependencies (use venv if python not in PATH)
 pip install -r requirements.txt
+# Or: ./venv/bin/pip install -r requirements.txt
 
 # Set up environment
 cp .env.example .env
@@ -14,6 +15,7 @@ cp .env.example .env
 
 # Run the CLI
 python flow.py [command]
+# Or: ./venv/bin/python flow.py [command]
 
 # Run setup (one-time for Backboard.io)
 python setup_assistants.py
@@ -22,8 +24,12 @@ python setup_assistants.py
 ## Validation
 
 ```bash
-# Run tests
+# Run tests (120 tests covering all modules)
 pytest
+# Or: ./venv/bin/pytest
+
+# Verbose test output
+pytest -v
 
 # Type checking
 mypy .
