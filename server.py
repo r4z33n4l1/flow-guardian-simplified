@@ -282,26 +282,53 @@ Example output: ["auth", "jwt", "token", "refresh"]""",
                         "score": 4,  # High score - actually matched query!
                     })
 
-        # Only search Backboard if local results are insufficient
-        # This saves an API call for most queries
+        # Search Backboard when:
+        # 1. local_only=False (frontend explicitly requested full search)
+        # 2. OR local results are insufficient (score < 3)
+        # When frontend passes local_only=False, it already determined local is insufficient
         local_has_good_results = any(r.get("score", 0) >= 3 for r in results)
 
-        if not local_only and not local_has_good_results and self.backboard_available():
-            thread_id = os.environ.get("BACKBOARD_PERSONAL_THREAD_ID")
-            if thread_id:
-                try:
-                    log("Local context insufficient, querying Backboard...", "INFO")
-                    enhanced_query = " ".join(search_terms) if search_terms else query
-                    cloud_response = await self.backboard.recall(thread_id, enhanced_query)
-                    if cloud_response and len(cloud_response) > 20:
-                        results.append({
-                            "content": cloud_response,
-                            "source": "backboard",
-                            "timestamp": datetime.now().isoformat(),
-                            "score": 2,  # Lower than good local matches
-                        })
-                except Exception as e:
-                    log(f"Backboard search error: {e}", "WARN")
+        # Always query Backboard when local_only=False - the frontend already did the intelligence check
+        if not local_only:
+            if not self.backboard_available():
+                log("Backboard not available (BACKBOARD_API_KEY not set)", "DEBUG")
+            else:
+                thread_id = os.environ.get("BACKBOARD_PERSONAL_THREAD_ID")
+                if not thread_id:
+                    log("Backboard available but BACKBOARD_PERSONAL_THREAD_ID not set", "WARN")
+                else:
+                    try:
+                        log(f"Querying Backboard (local_only={local_only}, local_results={len(results)}, has_good={local_has_good_results})...", "INFO")
+                        enhanced_query = " ".join(search_terms) if search_terms else query
+                        cloud_response = await self.backboard.recall(thread_id, enhanced_query)
+                        if cloud_response and len(cloud_response) > 20:
+                            results.append({
+                                "content": cloud_response,
+                                "source": "backboard",
+                                "timestamp": datetime.now().isoformat(),
+                                "score": 2,  # Lower than good local matches
+                            })
+                    except Exception as e:
+                        log(f"Backboard search error: {e}", "WARN")
+
+        # Also search Linear documents if available (Phase 3: Project docs)
+        if not local_only and os.environ.get("LINEAR_API_KEY"):
+            try:
+                import linear_client
+                enhanced_query = " ".join(search_terms) if search_terms else query
+                linear_docs = await linear_client.search_documents(enhanced_query, limit=5)
+                for doc in linear_docs:
+                    results.append({
+                        "content": f"**Linear Doc:** {doc.get('title', 'Untitled')}\n{doc.get('content', '')}",
+                        "source": "linear",
+                        "url": doc.get("url"),
+                        "timestamp": doc.get("updated_at"),
+                        "score": 3,  # Higher score - project documentation
+                    })
+                if linear_docs:
+                    log(f"Found {len(linear_docs)} Linear documents matching query", "INFO")
+            except Exception as e:
+                log(f"Linear document search error: {e}", "DEBUG")
 
         # Sort by score (higher first) and limit
         results.sort(key=lambda x: x.get("score", 0), reverse=True)
@@ -1495,9 +1522,20 @@ async def run_mcp(service: FlowService):
         try:
             if name == "flow_recall":
                 result = await service.recall_context(arguments["query"])
-                text = f"Found {len(result['results'])} results for '{result['query']}':\n"
-                for r in result["results"][:5]:
-                    text += f"\n- {r.get('content', r)[:200]}..."
+                sources = {}
+                for r in result["results"]:
+                    src = r.get("source", "unknown")
+                    sources[src] = sources.get(src, 0) + 1
+                source_summary = ", ".join(f"{v} from {k}" for k, v in sources.items())
+                text = f"Found {len(result['results'])} results for '{result['query']}' ({source_summary}):\n"
+                for r in result["results"][:7]:
+                    source = r.get("source", "unknown")
+                    content = r.get("content", str(r))[:400]
+                    url = r.get("url", "")
+                    text += f"\n[{source}] {content}"
+                    if url:
+                        text += f"\n  Link: {url}"
+                    text += "\n"
                 return [TextContent(type="text", text=text)]
 
             elif name == "flow_capture":

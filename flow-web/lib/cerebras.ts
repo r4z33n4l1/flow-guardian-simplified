@@ -13,18 +13,47 @@ export interface StreamOptions {
   max_tokens?: number;
 }
 
+const MODELS = ['llama-3.3-70b', 'llama3.1-8b']; // Fallback models
+
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  retries = 2,
+  delay = 1000
+): Promise<Response> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(url, options);
+      if (response.ok || response.status < 500) return response;
+      // Server error - retry
+      if (attempt < retries) {
+        console.log(`[Cerebras] Retry ${attempt + 1}/${retries} after ${response.status}`);
+        await new Promise(r => setTimeout(r, delay * (attempt + 1)));
+      }
+    } catch (error) {
+      if (attempt < retries) {
+        console.log(`[Cerebras] Retry ${attempt + 1}/${retries} after connection error`);
+        await new Promise(r => setTimeout(r, delay * (attempt + 1)));
+      } else {
+        throw error;
+      }
+    }
+  }
+  return fetch(url, options); // Final attempt
+}
+
 export async function* streamChatCompletion(
   messages: Message[],
   apiKey: string,
   options: StreamOptions = {}
 ): AsyncGenerator<string, void, unknown> {
   const {
-    model = 'llama-3.3-70b',
+    model = MODELS[0],
     temperature = 0.7,
     max_tokens = 2000,
   } = options;
 
-  const response = await fetch(CEREBRAS_API_URL, {
+  const response = await fetchWithRetry(CEREBRAS_API_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -82,12 +111,12 @@ export async function chatCompletion(
   options: StreamOptions = {}
 ): Promise<string> {
   const {
-    model = 'llama-3.3-70b',
+    model = MODELS[0],
     temperature = 0.7,
     max_tokens = 2000,
   } = options;
 
-  const response = await fetch(CEREBRAS_API_URL, {
+  const response = await fetchWithRetry(CEREBRAS_API_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
