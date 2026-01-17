@@ -53,3 +53,28 @@ def get_current_branch() -> Optional[str]:
         return None
     success, branch = run_git_command(["rev-parse", "--abbrev-ref", "HEAD"])
     return branch if success else None
+
+
+def get_uncommitted_files() -> list[str]:
+    """
+    Get list of uncommitted files (staged + unstaged).
+
+    Returns:
+        List of file paths with uncommitted changes
+    """
+    if not is_git_repo():
+        return []
+
+    uncommitted_files = []
+    success, status_output = run_git_command(["status", "--porcelain"])
+    if success and status_output:
+        for line in status_output.split("\n"):
+            if line.strip():
+                # Format: "XY filename" where XY is status code
+                file_path = line[3:].strip()
+                # Handle renamed files (old -> new)
+                if " -> " in file_path:
+                    file_path = file_path.split(" -> ")[1]
+                uncommitted_files.append(file_path)
+
+    return uncommitted_files

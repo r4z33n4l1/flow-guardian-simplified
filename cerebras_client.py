@@ -11,7 +11,7 @@ from cerebras.cloud.sdk import Cerebras
 
 # ============ CONFIGURATION ============
 
-DEFAULT_MODEL = "llama-3.3-70b"
+DEFAULT_MODEL = "zai-glm-4.7"
 
 
 def _get_api_key() -> str:
@@ -90,7 +90,9 @@ def complete(
         if hasattr(response, 'choices') and response.choices:
             choices = response.choices
             if len(choices) > 0:  # type: ignore[arg-type]
-                return choices[0].message.content or ""  # type: ignore[index]
+                msg = choices[0].message
+                # Some models (like zai-glm-4.7) use reasoning field instead of content
+                return msg.content or getattr(msg, 'reasoning', '') or ""
         return ""
 
     except Exception as e:

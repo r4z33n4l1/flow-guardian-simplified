@@ -26,7 +26,7 @@ class TestGetClient:
 
     def test_raises_auth_error_without_key(self, monkeypatch):
         """_get_client should raise CerebrasAuthError without API key."""
-        monkeypatch.setattr(cerebras_client, 'API_KEY', None)
+        monkeypatch.delenv("CEREBRAS_API_KEY", raising=False)
 
         with pytest.raises(cerebras_client.CerebrasAuthError) as exc_info:
             cerebras_client._get_client()
@@ -35,7 +35,7 @@ class TestGetClient:
 
     def test_creates_client_with_key(self, monkeypatch):
         """_get_client should create client when API key is set."""
-        monkeypatch.setattr(cerebras_client, 'API_KEY', "test-api-key")
+        monkeypatch.setenv("CEREBRAS_API_KEY", "test-api-key")
 
         with mock.patch('cerebras_client.Cerebras') as mock_cerebras:
             mock_cerebras.return_value = mock.MagicMock()
@@ -50,7 +50,7 @@ class TestComplete:
 
     def test_complete_basic(self, monkeypatch):
         """complete should return model response."""
-        monkeypatch.setattr(cerebras_client, 'API_KEY', "test-key")
+        monkeypatch.setenv("CEREBRAS_API_KEY", "test-key")
 
         mock_response = mock.MagicMock()
         mock_response.choices = [
@@ -68,7 +68,7 @@ class TestComplete:
 
     def test_complete_with_system_message(self, monkeypatch):
         """complete should include system message when provided."""
-        monkeypatch.setattr(cerebras_client, 'API_KEY', "test-key")
+        monkeypatch.setenv("CEREBRAS_API_KEY", "test-key")
 
         mock_response = mock.MagicMock()
         mock_response.choices = [
@@ -88,7 +88,7 @@ class TestComplete:
 
     def test_complete_json_mode(self, monkeypatch):
         """complete should set response_format for json_mode."""
-        monkeypatch.setattr(cerebras_client, 'API_KEY', "test-key")
+        monkeypatch.setenv("CEREBRAS_API_KEY", "test-key")
 
         mock_response = mock.MagicMock()
         mock_response.choices = [
@@ -108,7 +108,7 @@ class TestComplete:
 
     def test_complete_handles_auth_error(self, monkeypatch):
         """complete should raise CerebrasAuthError on 401."""
-        monkeypatch.setattr(cerebras_client, 'API_KEY', "invalid-key")
+        monkeypatch.setenv("CEREBRAS_API_KEY", "invalid-key")
 
         with mock.patch('cerebras_client.Cerebras') as mock_cerebras:
             mock_client = mock.MagicMock()
@@ -120,7 +120,7 @@ class TestComplete:
 
     def test_complete_handles_rate_limit(self, monkeypatch):
         """complete should raise CerebrasRateLimitError on 429."""
-        monkeypatch.setattr(cerebras_client, 'API_KEY', "test-key")
+        monkeypatch.setenv("CEREBRAS_API_KEY", "test-key")
 
         with mock.patch('cerebras_client.Cerebras') as mock_cerebras:
             mock_client = mock.MagicMock()
@@ -132,7 +132,7 @@ class TestComplete:
 
     def test_complete_handles_generic_error(self, monkeypatch):
         """complete should raise CerebrasError on other errors."""
-        monkeypatch.setattr(cerebras_client, 'API_KEY', "test-key")
+        monkeypatch.setenv("CEREBRAS_API_KEY", "test-key")
 
         with mock.patch('cerebras_client.Cerebras') as mock_cerebras:
             mock_client = mock.MagicMock()
@@ -148,7 +148,7 @@ class TestAnalyzeSessionContext:
 
     def test_analyze_session_context_success(self, monkeypatch):
         """analyze_session_context should return structured context."""
-        monkeypatch.setattr(cerebras_client, 'API_KEY', "test-key")
+        monkeypatch.setenv("CEREBRAS_API_KEY", "test-key")
 
         mock_json_response = json.dumps({
             "summary": "Working on auth",
@@ -174,7 +174,7 @@ class TestAnalyzeSessionContext:
 
     def test_analyze_session_context_handles_invalid_json(self, monkeypatch):
         """analyze_session_context should handle invalid JSON gracefully."""
-        monkeypatch.setattr(cerebras_client, 'API_KEY', "test-key")
+        monkeypatch.setenv("CEREBRAS_API_KEY", "test-key")
 
         with mock.patch.object(cerebras_client, 'complete', return_value="not valid json"):
             result = cerebras_client.analyze_session_context(
@@ -191,7 +191,7 @@ class TestAnalyzeSessionContext:
 
     def test_analyze_session_context_default_summary(self, monkeypatch):
         """analyze_session_context should provide default summary."""
-        monkeypatch.setattr(cerebras_client, 'API_KEY', "test-key")
+        monkeypatch.setenv("CEREBRAS_API_KEY", "test-key")
 
         mock_json_response = json.dumps({
             "summary": None,
@@ -216,7 +216,7 @@ class TestGenerateRestorationMessage:
 
     def test_generate_restoration_message_success(self, monkeypatch):
         """generate_restoration_message should return message from Cerebras."""
-        monkeypatch.setattr(cerebras_client, 'API_KEY', "test-key")
+        monkeypatch.setenv("CEREBRAS_API_KEY", "test-key")
 
         expected_message = "Welcome back! You were working on auth feature."
 
@@ -240,7 +240,7 @@ class TestGenerateRestorationMessage:
 
     def test_generate_restoration_message_fallback(self, monkeypatch):
         """generate_restoration_message should fallback on error."""
-        monkeypatch.setattr(cerebras_client, 'API_KEY', "test-key")
+        monkeypatch.setenv("CEREBRAS_API_KEY", "test-key")
 
         with mock.patch.object(
             cerebras_client, 'complete',

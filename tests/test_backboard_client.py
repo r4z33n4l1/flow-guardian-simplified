@@ -41,7 +41,7 @@ class TestHeaders:
 
         headers = backboard_client._headers()
 
-        assert headers["Authorization"] == "Bearer test-api-key"
+        assert headers["X-API-Key"] == "test-api-key"
         assert headers["Content-Type"] == "application/json"
 
 
@@ -199,8 +199,9 @@ class TestStoreFunctions:
 
             mock_request.assert_called_once()
             call_args = mock_request.call_args
-            assert call_args.kwargs["json"]["content"] == "Test message"
-            assert call_args.kwargs["json"]["send_to_llm"] is False
+            # Implementation uses data= for form data, not json=
+            assert call_args.kwargs["data"]["content"] == "Test message"
+            assert call_args.kwargs["data"]["send_to_llm"] == "false"
             assert result == {"id": "msg_123"}
 
     @pytest.mark.asyncio
@@ -287,8 +288,9 @@ class TestRecallFunctions:
 
             mock_request.assert_called_once()
             call_args = mock_request.call_args
-            assert call_args.kwargs["json"]["memory"] == "auto"
-            assert call_args.kwargs["json"]["send_to_llm"] is True
+            # Implementation uses data= for form data, not json=
+            assert call_args.kwargs["data"]["memory"] == "auto"
+            assert call_args.kwargs["data"]["send_to_llm"] == "true"
             assert result == "Search results"
 
     @pytest.mark.asyncio
@@ -362,7 +364,7 @@ class TestSetupFunctions:
 
         mock_response = mock.MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {"id": "assistant_123"}
+        mock_response.json.return_value = {"assistant_id": "assistant_123"}
 
         with mock.patch.object(
             backboard_client, '_request_with_retry',
@@ -388,7 +390,7 @@ class TestSetupFunctions:
 
         mock_response = mock.MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {"id": "assistant_456"}
+        mock_response.json.return_value = {"assistant_id": "assistant_456"}
 
         with mock.patch.object(
             backboard_client, '_request_with_retry',
@@ -407,7 +409,7 @@ class TestSetupFunctions:
 
         mock_response = mock.MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {"id": "thread_789"}
+        mock_response.json.return_value = {"thread_id": "thread_789"}
 
         with mock.patch.object(
             backboard_client, '_request_with_retry',

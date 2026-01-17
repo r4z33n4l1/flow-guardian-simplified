@@ -11,6 +11,34 @@ from git_utils import run_git_command, is_git_repo, get_current_branch as _get_c
 
 # ============ TIME CALCULATIONS ============
 
+def _parse_timestamp_naive(timestamp: str) -> datetime:
+    """
+    Parse an ISO 8601 timestamp and return a naive (timezone-unaware) datetime.
+
+    Handles both ISO formats with 'T' separator and Z suffix, as well as plain formats.
+    Converts to naive datetime for consistent comparison with datetime.now().
+
+    Args:
+        timestamp: ISO 8601 timestamp string (e.g., "2024-01-15T10:30:00Z" or "2024-01-15 10:30:00")
+
+    Returns:
+        Naive datetime object
+
+    Raises:
+        ValueError: If timestamp cannot be parsed
+    """
+    if "T" in timestamp:
+        parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+    else:
+        parsed = datetime.fromisoformat(timestamp)
+
+    # Convert to naive datetime for comparison with datetime.now()
+    if parsed.tzinfo is not None:
+        parsed = parsed.replace(tzinfo=None)
+
+    return parsed
+
+
 def calculate_time_elapsed(timestamp: str) -> str:
     """
     Calculate human-readable time elapsed since timestamp.
@@ -22,15 +50,7 @@ def calculate_time_elapsed(timestamp: str) -> str:
         Human-readable duration (e.g., "2h 15m", "3 days")
     """
     try:
-        # Parse timestamp
-        if "T" in timestamp:
-            checkpoint_time = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-        else:
-            checkpoint_time = datetime.fromisoformat(timestamp)
-
-        # Make sure we compare naive datetimes
-        if checkpoint_time.tzinfo is not None:
-            checkpoint_time = checkpoint_time.replace(tzinfo=None)
+        checkpoint_time = _parse_timestamp_naive(timestamp)
 
         now = datetime.now()
         delta = now - checkpoint_time
@@ -72,17 +92,9 @@ def is_session_stale(timestamp: str, threshold_days: int = 7) -> bool:
         True if session is stale
     """
     try:
-        if "T" in timestamp:
-            checkpoint_time = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-        else:
-            checkpoint_time = datetime.fromisoformat(timestamp)
-
-        if checkpoint_time.tzinfo is not None:
-            checkpoint_time = checkpoint_time.replace(tzinfo=None)
-
+        checkpoint_time = _parse_timestamp_naive(timestamp)
         delta = datetime.now() - checkpoint_time
         return delta.days >= threshold_days
-
     except (ValueError, TypeError):
         return False
 
@@ -117,17 +129,7 @@ def get_changes_since(checkpoint_timestamp: str) -> dict:
     # Get commits since the timestamp
     commits = []
     try:
-        # Parse the timestamp for git log
-        if "T" in checkpoint_timestamp:
-            checkpoint_time = datetime.fromisoformat(
-                checkpoint_timestamp.replace("Z", "+00:00")
-            )
-        else:
-            checkpoint_time = datetime.fromisoformat(checkpoint_timestamp)
-
-        if checkpoint_time.tzinfo is not None:
-            checkpoint_time = checkpoint_time.replace(tzinfo=None)
-
+        checkpoint_time = _parse_timestamp_naive(checkpoint_timestamp)
         # Format for git: YYYY-MM-DD HH:MM:SS
         since_str = checkpoint_time.strftime("%Y-%m-%d %H:%M:%S")
 
