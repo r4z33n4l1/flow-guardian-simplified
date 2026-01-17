@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/Users/mihajlomicic/Desktop/flow-guardian/.venv/bin/python3
 """
 TLDR Read Enforcer Hook
 
@@ -135,11 +135,30 @@ def get_tldr(file_path: str, level: str = "L2") -> str:
         if not content.strip():
             return ""
 
+        original_lines = len(content.split('\n'))
+
         # Use AST-based extraction for code files (preserves symbols)
         summary = generate_code_tldr(content, path.name, level=level)
 
         if summary and len(summary.strip()) > 50:
-            return f"=== TLDR: {path.name} (AST-extracted) ===\n{summary}"
+            summary_lines = len(summary.split('\n'))
+            savings = round((1 - summary_lines / original_lines) * 100)
+
+            # Obvious header and footer so Claude knows AND mentions it's a TLDR
+            header = f"""╔══════════════════════════════════════════════════════════════════╗
+║  📋 TLDR SUMMARY (Flow Guardian)                                  ║
+║  Original: {path.name} ({original_lines} lines → {summary_lines} lines, {savings}% savings)
+╚══════════════════════════════════════════════════════════════════╝
+
+"""
+            footer = f"""
+
+---
+📋 **Note:** You are viewing a TLDR summary of `{path.name}`, not the full file.
+When responding, briefly mention you're working from a TLDR summary ({savings}% smaller).
+If the user needs specific implementation details not shown above, offer to read the full file."""
+
+            return header + summary + footer
         else:
             # Fallback: return first 50 lines
             lines = content.split('\n')[:50]
@@ -190,17 +209,31 @@ def main():
             print('{}')
             return
 
-        # Return TLDR instead of raw file
+        # Write TLDR to temp file and redirect Read to it
+        # This makes the UX cleaner - shows as successful read, not "blocking error"
+        import tempfile
+
+        # Create obvious TLDR filename that shows in Claude Code UI
+        original_name = Path(file_path).name
+        temp_dir = Path(tempfile.gettempdir()) / "flow-guardian-tldr"
+        temp_dir.mkdir(exist_ok=True)
+        temp_file = temp_dir / f"TLDR__{original_name}.md"
+
+        # Write TLDR content to temp file
+        temp_file.write_text(tldr_content)
+
+        # Return allow with modified input pointing to temp file
         output = {
             "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
-                "permissionDecision": "deny",
-                "permissionDecisionReason": f"TLDR summary provided (95% token savings)",
-                "additionalContext": tldr_content
+                "permissionDecision": "allow",
+                "updatedInput": {
+                    "file_path": str(temp_file)
+                }
             }
         }
 
-        sys.stderr.write(f"[tldr-read-enforcer] TLDR applied: {file_path}\n")
+        sys.stderr.write(f"[tldr-read-enforcer] TLDR: {file_path} -> {temp_file}\n")
         print(json.dumps(output))
 
     except json.JSONDecodeError as e:
