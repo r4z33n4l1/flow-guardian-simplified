@@ -3,7 +3,7 @@
 > Flow Guardian — "Claude forgets. Flow Guardian remembers."
 
 **Last Updated:** 2026-01-17
-**Status:** ✅ **Phase 2: Complete (324 tests passing)**
+**Status:** ✅ **Phase 2: Complete (339 tests passing)**
 
 ---
 
@@ -27,7 +27,7 @@
 | `flow.py` | ✅ **Fully Implemented** | 17 |
 | **TOTAL** | **Phase 1 + Phase 2 Complete** | **4,355** |
 
-**Test Suite:** 324 passing tests across 15 test files
+**Test Suite:** 339 passing tests across 15 test files
 **Specifications:** 16 complete spec files in `specs/` directory
 **Dependencies:** Fully specified in `requirements.txt`
 
@@ -134,7 +134,7 @@ tldr.py ──────┘
 - [x] `test_handoff.py` — load/save/update/validation (32 tests)
 - [x] `test_tldr.py` — summarization levels, token estimation, fallback (35 tests)
 - [x] `test_inject.py` — injection generation, formatting, state save (19 tests)
-- [x] `test_setup_command.py` — directory creation, hook scripts, settings (4 tests)
+- [x] `test_setup_command.py` — directory creation, hook scripts, settings, global mode, env vars, merging (19 tests)
 - [x] End-to-end test: save → close → reopen → context restored (13 tests in test_e2e.py)
 - [x] `test_daemon.py` — logging, state, JSON extraction, insight extraction, daemon control (28 tests)
 - [x] `test_session_parser.py` — session discovery, message parsing, conversation text (23 tests)
@@ -406,7 +406,7 @@ flow-guardian/
 
 ## Testing
 
-**Test Suite:** 324 passing tests
+**Test Suite:** 339 passing tests
 
 | Module | Test File | Coverage |
 |--------|-----------|----------|
@@ -416,12 +416,12 @@ flow-guardian/
 | `restore.py` | `test_restore.py` | Change detection, restoration messages, conflicts |
 | `cerebras_client.py` | `test_cerebras_client.py` | LLM inference, error handling, rate limiting |
 | `backboard_client.py` | `test_backboard_client.py` | API calls, retry logic, error classes, create_assistant, create_thread |
-| `flow_cli.py` | `test_flow_cli.py` | All CLI commands (save, resume, learn, recall, team, status, history) |
+| `flow_cli.py` | `test_flow_cli.py` | All CLI commands (save, resume, learn, recall, team, status, history, setup) |
 | `setup_assistants.py` | `test_setup_assistants.py` | Personal and team assistant setup, error handling |
 | `handoff.py` | `test_handoff.py` | Load/save/update, validation, project root detection |
 | `tldr.py` | `test_tldr.py` | Summarization levels, token estimation, fallback |
 | `inject.py` | `test_inject.py` | Injection generation, formatting, state save |
-| `flow setup` | `test_setup_command.py` | Directory creation, hook scripts, settings |
+| `flow setup` | `test_flow_cli.py` | Directory creation, hook scripts, settings, global mode, env vars, JSON merge (19 tests) |
 | `daemon.py` | `test_daemon.py` | Logging, state management, insight extraction, daemon control |
 | `session_parser.py` | `test_session_parser.py` | Session discovery, message parsing, conversation text |
 | `e2e` | `test_e2e.py` | Save/restore flow, context persistence, injection levels |
