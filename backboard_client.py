@@ -49,7 +49,7 @@ def _headers() -> dict:
     if not API_KEY:
         raise BackboardAuthError("BACKBOARD_API_KEY environment variable not set")
     return {
-        "Authorization": f"Bearer {API_KEY}",
+        "X-API-Key": API_KEY,
         "Content-Type": "application/json"
     }
 
@@ -136,12 +136,10 @@ async def create_assistant(name: str, llm_provider: str = "cerebras") -> str:
         headers=_headers(),
         json={
             "name": name,
-            "llm_provider": llm_provider,
-            "llm_model_name": "llama-3.3-70b",
-            "tools": []
+            "description": name,
         }
     )
-    return response.json()["id"]
+    return response.json()["assistant_id"]
 
 
 async def create_thread(assistant_id: str) -> str:
@@ -157,9 +155,10 @@ async def create_thread(assistant_id: str) -> str:
     response = await _request_with_retry(
         "post",
         f"{BASE_URL}/assistants/{assistant_id}/threads",
-        headers=_headers()
+        headers=_headers(),
+        json={}
     )
-    return response.json()["id"]
+    return response.json()["thread_id"]
 
 
 async def health_check() -> bool:

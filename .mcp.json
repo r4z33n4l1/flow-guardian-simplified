@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "flow-guardian": {
+      "command": "/opt/homebrew/bin/python3.10",
+      "args": [
+        "/Users/razeenali/Projs/Side/8090hack/flow-guardian/mcp_server.py"
+      ],
+      "env": {
+        "BACKBOARD_API_KEY": "espr_hO-fAjLo-qsZFA7J_gHnH4eWLbTB5f2TgiADXb6VmKM",
+        "CEREBRAS_API_KEY": "csk-nn6tpycm82nf94pxedeht9edhh5tkd6dvjt2nwvdmw28ryf8",
+        "FLOW_GUARDIAN_USER": "razeenali",
+        "BACKBOARD_PERSONAL_ASSISTANT_ID": "c9c6eb20-e092-4664-9ae5-2961744b959e",
+        "BACKBOARD_PERSONAL_THREAD_ID": "e8e775f4-3328-4a21-b159-17a5e58eecca"
+      }
+    }
+  }
+}
