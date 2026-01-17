@@ -2,6 +2,38 @@
 
 This project provides persistent memory for AI coding assistants, allowing them to maintain context across sessions and share knowledge within teams.
 
+## 🧠 Using Flow Memory (IMPORTANT)
+
+You have access to persistent project memory via MCP tools. **Use these proactively!**
+
+### When to use `flow_recall`:
+- **Design/styling questions** → `flow_recall("color palette")` or `flow_recall("design system")`
+- **Architecture decisions** → `flow_recall("architecture")` or `flow_recall("patterns")`
+- **Past implementations** → `flow_recall("how did we implement X")`
+- **Project conventions** → `flow_recall("conventions")` or `flow_recall("code style")`
+- **Any time the user references "what we did" or "like before"**
+
+### When to use `flow_learn`:
+- After making a significant decision → `flow_learn("Decided to use X because Y", tags=["architecture"])`
+- When discovering something important → `flow_learn("Found that X requires Y", tags=["gotcha"])`
+- When establishing a pattern → `flow_learn("Using orange-500 as primary accent color", tags=["design", "colors"])`
+
+### When to use `flow_capture`:
+- At natural stopping points in work
+- Before switching to a different task
+- When the user says "save this" or "remember this"
+
+### Current Project Design Decisions:
+- **Color Palette**: Warm Beige + Orange theme
+  - Background: `#FAF8F5` (warm off-white)
+  - Cards: `#ffffff` with `#E8E0D4` borders
+  - Accent: `orange-500` / `orange-600`
+  - Text: `#2D2A26` (dark brown), `#6B6560` (muted)
+- **UI Framework**: Next.js + Tailwind + shadcn/ui
+- **Backend**: Python FastAPI + Backboard.io + Cerebras
+
+**Always check flow_recall before implementing something that might have been decided before!**
+
 ## Quick Start
 
 ```bash

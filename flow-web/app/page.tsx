@@ -67,23 +67,28 @@ export default function Home() {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-background overflow-hidden">
-      <header className="flex-shrink-0 border-b border-zinc-800 px-6 py-3 bg-zinc-900/50 backdrop-blur">
+    <div className="h-screen flex flex-col bg-[#FAF8F5] overflow-hidden">
+      <header className="flex-shrink-0 border-b border-[#E8E0D4] px-6 py-3 bg-[#FAF8F5]/80 backdrop-blur">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-6">
-            <div>
-              <h1 className="text-xl font-semibold text-white">Flow Guardian</h1>
-              <p className="text-xs text-zinc-500">AI Team Memory</p>
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-orange-500">
+                <Network className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h1 className="text-xl font-semibold text-[#2D2A26]">Flow Guardian</h1>
+                <p className="text-xs text-[#6B6560]">AI Team Memory</p>
+              </div>
             </div>
             <nav className="hidden md:flex items-center gap-1">
               <Link href="/graph">
-                <Button variant="ghost" size="sm" className="gap-2 text-zinc-400 hover:text-white hover:bg-zinc-800">
+                <Button variant="ghost" size="sm" className="gap-2 text-[#6B6560] hover:text-orange-500 hover:bg-orange-50">
                   <Network className="w-4 h-4" />
                   Graph
                 </Button>
               </Link>
               <Link href="/dashboard">
-                <Button variant="ghost" size="sm" className="gap-2 text-zinc-400 hover:text-white hover:bg-zinc-800">
+                <Button variant="ghost" size="sm" className="gap-2 text-[#6B6560] hover:text-orange-500 hover:bg-orange-50">
                   <LayoutDashboard className="w-4 h-4" />
                   Dashboard
                 </Button>
@@ -95,7 +100,7 @@ export default function Home() {
               variant="ghost"
               size="sm"
               onClick={() => setShowActivity(!showActivity)}
-              className="gap-2 text-zinc-400 hover:text-white"
+              className="gap-2 text-[#6B6560] hover:text-orange-500 hover:bg-orange-50"
             >
               <Activity className="w-4 h-4" />
               <span className="hidden sm:inline">{showActivity ? "Hide" : "Show"}</span>
@@ -104,7 +109,7 @@ export default function Home() {
               variant="outline"
               size="sm"
               onClick={() => setIsUploadOpen(true)}
-              className="gap-2 border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+              className="gap-2 border-[#E8E0D4] text-[#6B6560] hover:bg-orange-50 hover:text-orange-500 hover:border-orange-300"
             >
               <Upload className="w-4 h-4" />
               <span className="hidden sm:inline">Add Context</span>
@@ -128,7 +133,7 @@ export default function Home() {
 
         {/* Activity Sidebar */}
         {showActivity && (
-          <aside className="w-96 flex-shrink-0 border-l bg-muted/30 hidden lg:block overflow-hidden">
+          <aside className="w-96 flex-shrink-0 border-l border-[#E8E0D4] bg-[#F5F0E8]/50 hidden lg:block overflow-hidden">
             <ActivityFeed className="h-full" />
           </aside>
         )}
