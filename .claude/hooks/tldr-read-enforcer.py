@@ -117,10 +117,15 @@ def should_bypass(file_path: str, cwd: str) -> tuple[bool, str]:
     return False, ""
 
 
-def get_tldr(file_path: str, level: str = "L1") -> str:
-    """Get TLDR summary of a file."""
+def get_tldr(file_path: str, level: str = "L2") -> str:
+    """
+    Get TLDR summary of a file using AST-based extraction.
+
+    Uses AST parsing for code files to preserve exact symbols (function names,
+    class names, signatures) - unlike LLM summarization which loses these.
+    """
     try:
-        from tldr import summarize_context
+        from tldr_code import generate_code_tldr
 
         path = Path(file_path)
         if not path.exists():
@@ -130,11 +135,11 @@ def get_tldr(file_path: str, level: str = "L1") -> str:
         if not content.strip():
             return ""
 
-        # Summarize with TLDR
-        summary = summarize_context(content, level=level, max_tokens=500)
+        # Use AST-based extraction for code files (preserves symbols)
+        summary = generate_code_tldr(content, path.name, level=level)
 
-        if summary:
-            return f"=== TLDR: {path.name} ===\n{summary}"
+        if summary and len(summary.strip()) > 50:
+            return f"=== TLDR: {path.name} (AST-extracted) ===\n{summary}"
         else:
             # Fallback: return first 50 lines
             lines = content.split('\n')[:50]
