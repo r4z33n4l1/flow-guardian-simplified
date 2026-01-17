@@ -4,6 +4,7 @@ httpx>=0.25.0
 rich>=13.0.0
 click>=8.0.0
 python-dotenv>=1.0.0
+PyYAML>=6.0.0
 
 # Development
 pytest>=7.0.0

@@ -5,6 +5,7 @@ import pytest
 from click.testing import CliRunner
 
 import flow
+import flow_cli
 
 
 @pytest.fixture
@@ -52,9 +53,9 @@ class TestSaveCommand:
 
     def test_save_basic(self, cli_runner, tmp_path):
         """save command should save session."""
-        with mock.patch('flow.capture') as mock_capture, \
-             mock.patch('flow.memory') as mock_memory, \
-             mock.patch('flow.backboard_client') as mock_backboard:
+        with mock.patch('flow_cli.capture') as mock_capture, \
+             mock.patch('flow_cli.memory') as mock_memory, \
+             mock.patch('flow_cli.backboard_client') as mock_backboard:
 
             mock_capture.build_session.return_value = {
                 "id": "session_test",
@@ -74,9 +75,9 @@ class TestSaveCommand:
 
     def test_save_with_message(self, cli_runner):
         """save command should accept message."""
-        with mock.patch('flow.capture') as mock_capture, \
-             mock.patch('flow.memory') as mock_memory, \
-             mock.patch('flow.backboard_client'):
+        with mock.patch('flow_cli.capture') as mock_capture, \
+             mock.patch('flow_cli.memory') as mock_memory, \
+             mock.patch('flow_cli.backboard_client'):
 
             mock_capture.build_session.return_value = {
                 "id": "session_test",
@@ -95,9 +96,9 @@ class TestSaveCommand:
 
     def test_save_with_tags(self, cli_runner):
         """save command should accept multiple tags."""
-        with mock.patch('flow.capture') as mock_capture, \
-             mock.patch('flow.memory') as mock_memory, \
-             mock.patch('flow.backboard_client'):
+        with mock.patch('flow_cli.capture') as mock_capture, \
+             mock.patch('flow_cli.memory') as mock_memory, \
+             mock.patch('flow_cli.backboard_client'):
 
             mock_capture.build_session.return_value = {
                 "id": "session_test",
@@ -131,7 +132,7 @@ class TestResumeCommand:
 
     def test_resume_no_sessions(self, cli_runner):
         """resume command should handle no sessions gracefully."""
-        with mock.patch('flow.memory') as mock_memory:
+        with mock.patch('flow_cli.memory') as mock_memory:
             mock_memory.get_latest_session.return_value = None
 
             result = cli_runner.invoke(flow.cli, ['resume'])
@@ -141,8 +142,8 @@ class TestResumeCommand:
 
     def test_resume_with_session(self, cli_runner):
         """resume command should restore session context."""
-        with mock.patch('flow.memory') as mock_memory, \
-             mock.patch('flow.restore') as mock_restore:
+        with mock.patch('flow_cli.memory') as mock_memory, \
+             mock.patch('flow_cli.restore') as mock_restore:
 
             mock_memory.get_latest_session.return_value = {
                 "id": "session_test",
@@ -184,8 +185,8 @@ class TestLearnCommand:
 
     def test_learn_basic(self, cli_runner):
         """learn command should store learning."""
-        with mock.patch('flow.memory') as mock_memory, \
-             mock.patch('flow.backboard_client'):
+        with mock.patch('flow_cli.memory') as mock_memory, \
+             mock.patch('flow_cli.backboard_client'):
 
             mock_memory.save_learning.return_value = "learning_test"
             mock_memory.get_config.return_value = {"user": "testuser"}
@@ -197,8 +198,8 @@ class TestLearnCommand:
 
     def test_learn_with_tags(self, cli_runner):
         """learn command should accept tags."""
-        with mock.patch('flow.memory') as mock_memory, \
-             mock.patch('flow.backboard_client'):
+        with mock.patch('flow_cli.memory') as mock_memory, \
+             mock.patch('flow_cli.backboard_client'):
 
             mock_memory.save_learning.return_value = "learning_test"
             mock_memory.get_config.return_value = {"user": "testuser"}
@@ -223,15 +224,18 @@ class TestRecallCommand:
         assert "--tag" in result.output or "-t" in result.output
         assert "--limit" in result.output
 
-    def test_recall_basic(self, cli_runner):
+    def test_recall_basic(self, cli_runner, monkeypatch):
         """recall command should search learnings."""
-        with mock.patch('flow.memory') as mock_memory, \
-             mock.patch('flow.backboard_client') as mock_backboard:
+        # Clear Backboard env vars to use local search
+        monkeypatch.delenv("BACKBOARD_PERSONAL_THREAD_ID", raising=False)
+
+        with mock.patch('flow_cli.memory') as mock_memory, \
+             mock.patch('flow_cli.restore') as mock_restore:
 
             mock_memory.search_learnings.return_value = [
                 {"text": "Auth learning", "tags": ["auth"], "timestamp": "2024-01-01T12:00:00"}
             ]
-            mock_memory.get_config.return_value = {}
+            mock_restore.calculate_time_elapsed.return_value = "1h"
 
             result = cli_runner.invoke(flow.cli, ['recall', 'authentication'])
 
@@ -251,7 +255,7 @@ class TestTeamCommand:
 
     def test_team_no_config(self, cli_runner):
         """team command should handle missing team config."""
-        with mock.patch('flow.memory') as mock_memory:
+        with mock.patch('flow_cli.memory') as mock_memory:
             mock_memory.get_config.return_value = {"backboard": {}}
 
             result = cli_runner.invoke(flow.cli, ['team', 'query'])
@@ -271,9 +275,9 @@ class TestStatusCommand:
 
     def test_status_basic(self, cli_runner):
         """status command should show status information."""
-        with mock.patch('flow.memory') as mock_memory, \
-             mock.patch('flow.capture') as mock_capture, \
-             mock.patch('flow.backboard_client') as mock_backboard:
+        with mock.patch('flow_cli.memory') as mock_memory, \
+             mock.patch('flow_cli.capture') as mock_capture, \
+             mock.patch('flow_cli.backboard_client') as mock_backboard:
 
             mock_memory.get_stats.return_value = {
                 "sessions_count": 5,
@@ -314,7 +318,7 @@ class TestHistoryCommand:
 
     def test_history_basic(self, cli_runner):
         """history command should list sessions."""
-        with mock.patch('flow.memory') as mock_memory:
+        with mock.patch('flow_cli.memory') as mock_memory:
             mock_memory.list_sessions.return_value = [
                 {
                     "id": "session_1",
@@ -337,7 +341,7 @@ class TestHistoryCommand:
 
     def test_history_with_limit(self, cli_runner):
         """history command should respect limit."""
-        with mock.patch('flow.memory') as mock_memory:
+        with mock.patch('flow_cli.memory') as mock_memory:
             mock_memory.list_sessions.return_value = []
 
             result = cli_runner.invoke(flow.cli, ['history', '-n', '5'])
@@ -348,7 +352,7 @@ class TestHistoryCommand:
 
     def test_history_filter_by_branch(self, cli_runner):
         """history command should filter by branch."""
-        with mock.patch('flow.memory') as mock_memory:
+        with mock.patch('flow_cli.memory') as mock_memory:
             mock_memory.list_sessions.return_value = []
 
             result = cli_runner.invoke(flow.cli, ['history', '--branch', 'main'])
@@ -359,10 +363,129 @@ class TestHistoryCommand:
 
     def test_history_empty(self, cli_runner):
         """history command should handle no sessions."""
-        with mock.patch('flow.memory') as mock_memory:
+        with mock.patch('flow_cli.memory') as mock_memory:
             mock_memory.list_sessions.return_value = []
 
             result = cli_runner.invoke(flow.cli, ['history'])
 
             assert result.exit_code == 0
             assert "No sessions" in result.output or "no saved sessions" in result.output.lower()
+
+
+class TestInjectCommand:
+    """Tests for the inject command."""
+
+    def test_inject_help(self, cli_runner):
+        """inject command should display help."""
+        result = cli_runner.invoke(flow.cli, ['inject', '--help'])
+
+        assert result.exit_code == 0
+        assert "--quiet" in result.output or "-q" in result.output
+        assert "--level" in result.output or "-l" in result.output
+        assert "--save-state" in result.output
+
+    def test_inject_quiet_mode(self, cli_runner, tmp_path, monkeypatch):
+        """inject command in quiet mode outputs plain text."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("BACKBOARD_PERSONAL_THREAD_ID", raising=False)
+
+        # Create .git marker
+        (tmp_path / ".git").mkdir()
+
+        # Patch at the inject module level
+        with mock.patch('inject.generate_injection_sync') as mock_gen:
+            mock_gen.return_value = "Plain text output"
+
+            result = cli_runner.invoke(flow.cli, ['inject', '--quiet'])
+
+            assert result.exit_code == 0
+            assert "Plain text output" in result.output
+
+    def test_inject_save_state(self, cli_runner, tmp_path, monkeypatch):
+        """inject --save-state saves current state."""
+        monkeypatch.chdir(tmp_path)
+
+        # Create .git marker
+        (tmp_path / ".git").mkdir()
+
+        with mock.patch('inject.save_current_state_sync') as mock_save:
+            mock_save.return_value = {
+                "goal": "Saved goal",
+                "status": "in_progress",
+                "now": "Working",
+            }
+
+            result = cli_runner.invoke(flow.cli, ['inject', '--save-state'])
+
+            assert result.exit_code == 0
+            mock_save.assert_called_once()
+
+    def test_inject_level_options(self, cli_runner):
+        """inject command should accept level options."""
+        result = cli_runner.invoke(flow.cli, ['inject', '--help'])
+
+        # Level should be documented
+        assert "L0" in result.output or "L1" in result.output
+
+
+class TestSetupCommand:
+    """Tests for the setup command."""
+
+    def test_setup_help(self, cli_runner):
+        """setup command should display help."""
+        result = cli_runner.invoke(flow.cli, ['setup', '--help'])
+
+        assert result.exit_code == 0
+        assert "--global" in result.output or "-g" in result.output
+        assert "--check" in result.output or "-c" in result.output
+        assert "--force" in result.output or "-f" in result.output
+
+    def test_setup_creates_directories(self, cli_runner, tmp_path, monkeypatch):
+        """setup command should create required directories."""
+        monkeypatch.chdir(tmp_path)
+
+        # Create .git marker so project is detected
+        (tmp_path / ".git").mkdir()
+
+        result = cli_runner.invoke(flow.cli, ['setup'])
+
+        assert result.exit_code == 0
+
+        # Check directories were created
+        assert (tmp_path / ".flow-guardian").exists()
+        assert (tmp_path / ".flow-guardian" / "handoff.yaml").exists()
+        assert (tmp_path / ".flow-guardian" / "config.yaml").exists()
+        assert (tmp_path / ".claude" / "hooks").exists()
+        assert (tmp_path / ".claude" / "hooks" / "flow-inject.sh").exists()
+        assert (tmp_path / ".claude" / "hooks" / "flow-precompact.sh").exists()
+        assert (tmp_path / ".claude" / "settings.json").exists()
+
+    def test_setup_check_mode(self, cli_runner, tmp_path, monkeypatch):
+        """setup --check should report status without modifying."""
+        monkeypatch.chdir(tmp_path)
+
+        result = cli_runner.invoke(flow.cli, ['setup', '--check'])
+
+        assert result.exit_code == 0
+        assert "Status" in result.output
+
+        # Should not create directories in check mode
+        assert not (tmp_path / ".flow-guardian").exists()
+
+    def test_setup_force_overwrites(self, cli_runner, tmp_path, monkeypatch):
+        """setup --force should overwrite existing files."""
+        monkeypatch.chdir(tmp_path)
+
+        # Create existing files
+        fg_dir = tmp_path / ".flow-guardian"
+        fg_dir.mkdir()
+        (fg_dir / "handoff.yaml").write_text("old content")
+
+        result = cli_runner.invoke(flow.cli, ['setup', '--force'])
+
+        assert result.exit_code == 0
+
+        # File should be overwritten
+        content = (fg_dir / "handoff.yaml").read_text()
+        assert "old content" not in content
+        assert "Flow Guardian" in content or "goal" in content

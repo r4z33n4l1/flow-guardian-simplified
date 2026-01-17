@@ -85,6 +85,25 @@ def save(message: Optional[str], tag: tuple, quiet: bool):
                 if not quiet:
                     console.print("[yellow]Backboard unavailable, using local storage[/yellow]")
 
+        # Update handoff.yaml for seamless context restoration
+        try:
+            import handoff
+            context = session.get("context", {})
+            git = session.get("git", {})
+            handoff.save_handoff({
+                "goal": context.get("summary", message or "Working on project"),
+                "status": "in_progress",
+                "now": message or "Working on project",
+                "hypothesis": context.get("hypothesis"),
+                "files": git.get("uncommitted_files", []),
+                "branch": git.get("branch"),
+                "session_id": session_id,
+            })
+        except Exception as e:
+            # Don't fail the save command if handoff update fails
+            if not quiet:
+                console.print(f"[dim]Note: Could not update handoff.yaml: {e}[/dim]")
+
         if quiet:
             console.print(session_id)
         else:
@@ -808,6 +827,392 @@ Be specific and actionable. This will be used to restore context in a new sessio
     except Exception as e:
         console.print(f"[red]Error getting context: {e}[/red]")
         sys.exit(1)
+
+
+# ============ INJECT COMMAND ============
+
+@cli.command()
+@click.option("-q", "--quiet", is_flag=True, help="Plain output, no Rich formatting (for hooks)")
+@click.option("-l", "--level", default="L1", type=click.Choice(["L0", "L1", "L2", "L3"]),
+              help="TLDR depth (default: L1)")
+@click.option("--save-state", is_flag=True, help="Save current state to handoff.yaml")
+def inject(quiet: bool, level: str, save_state: bool):
+    """Inject context for Claude Code sessions.
+
+    Generates context from handoff.yaml and Backboard memory,
+    formatted for Claude to understand your session state.
+
+    Used by:
+    - SessionStart hook (automatic injection)
+    - PreCompact hook (state preservation)
+    - Manual context loading
+
+    Examples:
+        flow inject              # Full injection with formatting
+        flow inject --quiet      # Plain output for hooks
+        flow inject --level L2   # More detailed context
+        flow inject --save-state # Save state before compaction
+    """
+    import inject as inject_module
+
+    try:
+        if save_state:
+            # Save current state to handoff.yaml (PreCompact mode)
+            data = inject_module.save_current_state_sync()
+
+            if quiet:
+                console.print("state saved")
+            else:
+                lines = []
+                lines.append("[bold]Session state saved[/bold]")
+                lines.append("")
+                lines.append(f"[dim]Goal:[/dim] {data.get('goal', 'N/A')}")
+                lines.append(f"[dim]Status:[/dim] {data.get('status', 'N/A')}")
+                lines.append(f"[dim]Now:[/dim] {data.get('now', 'N/A')}")
+
+                branch = data.get('branch')
+                if branch:
+                    lines.append(f"[dim]Branch:[/dim] {branch}")
+
+                files = data.get('files', [])
+                if files:
+                    lines.append(f"[dim]Files:[/dim] {', '.join(files[:5])}")
+
+                panel = Panel(
+                    "\n".join(lines),
+                    title="[green]State Saved[/green]",
+                    border_style="green"
+                )
+                console.print(panel)
+        else:
+            # Generate and output injection
+            output = inject_module.generate_injection_sync(level=level, quiet=quiet)
+
+            if quiet:
+                # Direct output for hooks (no Rich formatting)
+                console.print(output, highlight=False)
+            else:
+                # Beautiful panel for interactive use
+                panel = Panel(
+                    output,
+                    title="[blue]Context Injection[/blue]",
+                    border_style="blue"
+                )
+                console.print(panel)
+
+    except Exception as e:
+        if quiet:
+            # Silent failure for hooks
+            console.print(f"error: {e}", highlight=False)
+        else:
+            console.print(f"[red]Error generating injection: {e}[/red]")
+        sys.exit(1)
+
+
+# ============ SETUP COMMAND ============
+
+# Hook script templates
+FLOW_INJECT_HOOK = '''#!/bin/bash
+# Flow Guardian SessionStart Hook
+# Injects project context at session start
+
+if [ -d ".flow-guardian" ]; then
+    [ -f ".env" ] && export $(grep -v '^#' .env | xargs)
+    flow inject --quiet 2>/dev/null
+fi
+'''
+
+FLOW_PRECOMPACT_HOOK = '''#!/bin/bash
+# Flow Guardian PreCompact Hook
+# Saves state before context compaction
+
+if [ -d ".flow-guardian" ]; then
+    [ -f ".env" ] && export $(grep -v '^#' .env | xargs)
+    flow inject --save-state 2>/dev/null
+fi
+'''
+
+HOOKS_SETTINGS_JSON = '''{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/flow-inject.sh"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/flow-precompact.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
+'''
+
+INITIAL_HANDOFF_YAML = '''# Flow Guardian Handoff State
+# Auto-updated by flow save, daemon, and hooks
+goal: null
+status: null
+now: null
+timestamp: null
+'''
+
+INITIAL_CONFIG_YAML = '''# Flow Guardian Local Config
+# Overrides global settings for this project
+
+# TLDR depth for injection (L0, L1, L2, L3)
+tldr_level: L1
+
+# Include files in context
+include_files: true
+
+# Auto-inject on session start
+auto_inject: true
+'''
+
+
+@cli.command()
+@click.option("-g", "--global", "global_mode", is_flag=True,
+              help="Install hooks globally for all projects")
+@click.option("-c", "--check", "check_mode", is_flag=True,
+              help="Check setup status without modifying")
+@click.option("-f", "--force", is_flag=True,
+              help="Overwrite existing files")
+def setup(global_mode: bool, check_mode: bool, force: bool):
+    """Initialize Flow Guardian for a project.
+
+    Creates necessary directories and configures Claude Code hooks
+    for automatic context injection.
+
+    Examples:
+        flow setup              # Set up current project
+        flow setup --global     # Set up global hooks (all projects)
+        flow setup --check      # Check setup status
+    """
+    from pathlib import Path
+
+    if global_mode:
+        base_dir = Path.home()
+    else:
+        base_dir = Path.cwd()
+
+    if check_mode:
+        _display_setup_status(base_dir, global_mode)
+        return
+
+    try:
+        results = []
+
+        # Create .flow-guardian/ directory (skip for global mode)
+        if not global_mode:
+            fg_dir = base_dir / ".flow-guardian"
+            if not fg_dir.exists():
+                fg_dir.mkdir(parents=True)
+                results.append(("Created .flow-guardian/", True))
+            elif force:
+                results.append(("Updated .flow-guardian/", True))
+            else:
+                results.append((".flow-guardian/ exists", True))
+
+            # Create handoff.yaml
+            handoff_path = fg_dir / "handoff.yaml"
+            if not handoff_path.exists() or force:
+                handoff_path.write_text(INITIAL_HANDOFF_YAML)
+                results.append(("Created .flow-guardian/handoff.yaml", True))
+            else:
+                results.append((".flow-guardian/handoff.yaml exists", True))
+
+            # Create config.yaml
+            config_path = fg_dir / "config.yaml"
+            if not config_path.exists() or force:
+                config_path.write_text(INITIAL_CONFIG_YAML)
+                results.append(("Created .flow-guardian/config.yaml", True))
+            else:
+                results.append((".flow-guardian/config.yaml exists", True))
+
+        # Create .claude/hooks/ directory
+        hooks_dir = base_dir / ".claude" / "hooks"
+        if not hooks_dir.exists():
+            hooks_dir.mkdir(parents=True)
+            results.append(("Created .claude/hooks/", True))
+        else:
+            results.append((".claude/hooks/ exists", True))
+
+        # Create hook scripts
+        inject_hook_path = hooks_dir / "flow-inject.sh"
+        if not inject_hook_path.exists() or force:
+            inject_hook_path.write_text(FLOW_INJECT_HOOK)
+            inject_hook_path.chmod(0o755)  # Make executable
+            results.append(("Created .claude/hooks/flow-inject.sh", True))
+        else:
+            results.append((".claude/hooks/flow-inject.sh exists", True))
+
+        precompact_hook_path = hooks_dir / "flow-precompact.sh"
+        if not precompact_hook_path.exists() or force:
+            precompact_hook_path.write_text(FLOW_PRECOMPACT_HOOK)
+            precompact_hook_path.chmod(0o755)  # Make executable
+            results.append(("Created .claude/hooks/flow-precompact.sh", True))
+        else:
+            results.append((".claude/hooks/flow-precompact.sh exists", True))
+
+        # Create/update settings.json
+        settings_path = base_dir / ".claude" / "settings.json"
+        if not settings_path.exists() or force:
+            settings_path.write_text(HOOKS_SETTINGS_JSON)
+            results.append(("Created .claude/settings.json", True))
+        else:
+            # Try to merge hooks into existing settings
+            try:
+                import json
+                with open(settings_path) as f:
+                    existing = json.load(f)
+                hooks_config = json.loads(HOOKS_SETTINGS_JSON)
+                if "hooks" not in existing:
+                    existing["hooks"] = hooks_config["hooks"]
+                    with open(settings_path, "w") as f:
+                        json.dump(existing, f, indent=2)
+                    results.append(("Updated .claude/settings.json", True))
+                else:
+                    results.append((".claude/settings.json exists (hooks may need manual merge)", False))
+            except Exception:
+                results.append((".claude/settings.json exists", True))
+
+        # Check environment variables
+        env_results = []
+        if os.environ.get("CEREBRAS_API_KEY"):
+            env_results.append(("CEREBRAS_API_KEY", True))
+        else:
+            env_results.append(("CEREBRAS_API_KEY not set", False))
+
+        if os.environ.get("BACKBOARD_API_KEY"):
+            env_results.append(("BACKBOARD_API_KEY", True))
+        else:
+            env_results.append(("BACKBOARD_API_KEY not set", False))
+
+        if os.environ.get("BACKBOARD_PERSONAL_THREAD_ID"):
+            env_results.append(("BACKBOARD_PERSONAL_THREAD_ID", True))
+        else:
+            env_results.append(("BACKBOARD_PERSONAL_THREAD_ID not set (run setup_assistants.py)", False))
+
+        # Display results
+        _display_setup_results(results, env_results, global_mode)
+
+    except PermissionError as e:
+        console.print(f"[red]Permission denied: {e}[/red]")
+        console.print("Try running with appropriate permissions.")
+        sys.exit(1)
+    except Exception as e:
+        console.print(f"[red]Setup failed: {e}[/red]")
+        sys.exit(1)
+
+
+def _display_setup_status(base_dir: Path, global_mode: bool):
+    """Display current setup status."""
+    lines = []
+    location = "Global (~/.claude)" if global_mode else f"Project: {base_dir}"
+    lines.append(f"[bold]{location}[/bold]")
+    lines.append("")
+
+    # Check directories and files
+    lines.append("[bold]Local Setup:[/bold]")
+
+    if not global_mode:
+        fg_dir = base_dir / ".flow-guardian"
+        if fg_dir.exists():
+            lines.append("  .flow-guardian/          [green]✓ exists[/green]")
+        else:
+            lines.append("  .flow-guardian/          [yellow]✗ missing[/yellow]")
+
+        handoff_path = fg_dir / "handoff.yaml"
+        if handoff_path.exists():
+            lines.append("  .flow-guardian/handoff.yaml  [green]✓ exists[/green]")
+        else:
+            lines.append("  .flow-guardian/handoff.yaml  [yellow]✗ missing[/yellow]")
+
+    hooks_dir = base_dir / ".claude" / "hooks"
+    if hooks_dir.exists():
+        lines.append("  .claude/hooks/           [green]✓ exists[/green]")
+    else:
+        lines.append("  .claude/hooks/           [yellow]✗ missing[/yellow]")
+
+    settings_path = base_dir / ".claude" / "settings.json"
+    if settings_path.exists():
+        lines.append("  .claude/settings.json    [green]✓ exists[/green]")
+    else:
+        lines.append("  .claude/settings.json    [yellow]✗ missing[/yellow]")
+
+    # Check environment
+    lines.append("")
+    lines.append("[bold]Environment:[/bold]")
+
+    if os.environ.get("CEREBRAS_API_KEY"):
+        lines.append("  CEREBRAS_API_KEY         [green]✓ set[/green]")
+    else:
+        lines.append("  CEREBRAS_API_KEY         [yellow]✗ not set[/yellow]")
+
+    if os.environ.get("BACKBOARD_API_KEY"):
+        lines.append("  BACKBOARD_API_KEY        [green]✓ set[/green]")
+    else:
+        lines.append("  BACKBOARD_API_KEY        [yellow]✗ not set[/yellow]")
+
+    if os.environ.get("BACKBOARD_PERSONAL_THREAD_ID"):
+        lines.append("  BACKBOARD_PERSONAL_THREAD_ID  [green]✓ set[/green]")
+    else:
+        lines.append("  BACKBOARD_PERSONAL_THREAD_ID  [yellow]✗ not set[/yellow]")
+
+    panel = Panel(
+        "\n".join(lines),
+        title="[cyan]Flow Guardian Setup Status[/cyan]",
+        border_style="cyan"
+    )
+    console.print(panel)
+
+
+def _display_setup_results(results: list, env_results: list, global_mode: bool):
+    """Display setup completion results."""
+    lines = []
+
+    for msg, success in results:
+        if success:
+            lines.append(f"[green]✓[/green] {msg}")
+        else:
+            lines.append(f"[yellow]⚠[/yellow] {msg}")
+
+    lines.append("")
+    lines.append("[bold]Environment:[/bold]")
+
+    for msg, success in env_results:
+        if success:
+            lines.append(f"[green]✓[/green] {msg}")
+        else:
+            lines.append(f"[yellow]⚠[/yellow] {msg}")
+
+    lines.append("")
+    lines.append("[bold]Setup complete![/bold] Flow Guardian will now:")
+    lines.append("• Automatically inject context on session start")
+    lines.append("• Save state before context compaction")
+    lines.append("• Remember your learnings across sessions")
+    lines.append("")
+    lines.append("Run [bold]flow save[/bold] to create your first checkpoint.")
+
+    title = "[green]Global Setup Complete[/green]" if global_mode else "[green]Project Setup Complete[/green]"
+    panel = Panel(
+        "\n".join(lines),
+        title=title,
+        border_style="green"
+    )
+    console.print(panel)
 
 
 # ============ MAIN ============
