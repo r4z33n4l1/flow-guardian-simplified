@@ -458,6 +458,110 @@ class DaemonMode:
         DAEMON_DIR.mkdir(parents=True, exist_ok=True)
         STATE_FILE.write_text(json.dumps(self.state, indent=2, default=str))
 
+    async def _maybe_generate_docs(self, new_insights_count: int):
+        """Check if we should generate documentation based on activity.
+
+        Triggers report generation when:
+        - 5+ new insights captured in a session (significant session)
+        - 20+ total extractions since last report
+        - 6+ hours since last report
+        """
+        try:
+            import report_generator
+
+            last_report = self.state.get("last_report_time")
+            extractions_since_report = self.state.get("extractions_since_report", 0) + 1
+            self.state["extractions_since_report"] = extractions_since_report
+
+            should_generate = False
+            reason = ""
+
+            # Significant session (5+ insights at once)
+            if new_insights_count >= 5:
+                should_generate = True
+                reason = f"Significant session ({new_insights_count} insights)"
+
+            # Activity threshold
+            elif extractions_since_report >= 20:
+                should_generate = True
+                reason = f"Activity threshold ({extractions_since_report} extractions)"
+
+            # Time-based (6 hours)
+            elif last_report:
+                try:
+                    last_dt = datetime.fromisoformat(last_report)
+                    hours_since = (datetime.now() - last_dt).total_seconds() / 3600
+                    if hours_since >= 6:
+                        should_generate = True
+                        reason = f"Scheduled ({hours_since:.1f}h since last report)"
+                except (ValueError, TypeError):
+                    pass
+            else:
+                # No previous report - generate first one after some activity
+                if extractions_since_report >= 3:
+                    should_generate = True
+                    reason = "Initial report"
+
+            if should_generate:
+                log(f"[AutoDocs] Generating documentation... Reason: {reason}")
+
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                reports_dir = STATE_DIR / "reports"
+                reports_dir.mkdir(parents=True, exist_ok=True)
+
+                # Import Linear client for document storage
+                try:
+                    import linear_client
+                    linear_available = bool(os.environ.get("LINEAR_API_KEY"))
+                except ImportError:
+                    linear_available = False
+
+                # Generate FAQ from learnings
+                try:
+                    faq = await report_generator.generate_faq_from_solved(days=30)
+                    faq_path = reports_dir / f"auto_faq_{timestamp}.md"
+                    faq_path.write_text(faq)
+                    log(f"[AutoDocs] Generated FAQ: {faq_path.name}")
+
+                    # Store in Linear Docs
+                    if linear_available:
+                        doc = await linear_client.create_or_update_document(
+                            title="Flow Guardian FAQ",
+                            content=faq
+                        )
+                        if doc:
+                            log(f"[AutoDocs] Stored FAQ in Linear: {doc.get('url', doc.get('id'))}")
+                except Exception as e:
+                    log(f"[AutoDocs] FAQ generation failed: {e}", "WARN")
+
+                # Generate weekly summary
+                try:
+                    summary = await report_generator.generate_weekly_summary()
+                    summary_path = reports_dir / f"auto_weekly_{timestamp}.md"
+                    summary_path.write_text(summary)
+                    log(f"[AutoDocs] Generated weekly summary: {summary_path.name}")
+
+                    # Store in Linear Docs
+                    if linear_available:
+                        doc = await linear_client.create_or_update_document(
+                            title="Flow Guardian Weekly Summary",
+                            content=summary
+                        )
+                        if doc:
+                            log(f"[AutoDocs] Stored weekly summary in Linear: {doc.get('url', doc.get('id'))}")
+                except Exception as e:
+                    log(f"[AutoDocs] Weekly summary failed: {e}", "WARN")
+
+                # Update state
+                self.state["last_report_time"] = datetime.now().isoformat()
+                self.state["extractions_since_report"] = 0
+                self._save_state()
+
+        except ImportError:
+            pass  # report_generator not available
+        except Exception as e:
+            log(f"[AutoDocs] Error: {e}", "ERROR")
+
     async def extract_insights(self, conversation: str) -> list[dict]:
         """Use Cerebras to extract insights from conversation."""
         if not conversation.strip():
@@ -596,6 +700,9 @@ CONVERSATION:
             log(f"Stored {len(insights)} insights from {session_id[:8]}")
             self.state["extractions_count"] = self.state.get("extractions_count", 0) + 1
 
+            # Check if we should generate documentation
+            await self._maybe_generate_docs(len(insights))
+
         session_state["last_extraction"] = datetime.now().isoformat()
         session_state["pending_messages"] = 0
         self.state["sessions"][session_id] = session_state
@@ -641,7 +748,7 @@ CONVERSATION:
 
 def create_api_app(service: FlowService):
     """Create FastAPI application."""
-    from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form
+    from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form, BackgroundTasks
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import StreamingResponse
     from pydantic import BaseModel
@@ -689,29 +796,65 @@ def create_api_app(service: FlowService):
         return await service.get_status()
 
     @app.post("/capture")
-    async def capture(req: CaptureRequest):
-        return await service.capture_context(
+    async def capture(req: CaptureRequest, background_tasks: BackgroundTasks):
+        result = await service.capture_context(
             summary=req.summary,
             decisions=req.decisions,
             next_steps=req.next_steps,
             blockers=req.blockers,
         )
 
+        # Agentically create Linear issues for blockers
+        if req.blockers and len(req.blockers) > 0:
+            background_tasks.add_task(
+                create_linear_issues_for_blockers,
+                blockers=req.blockers,
+                summary=req.summary or ""
+            )
+
+        return result
+
     @app.post("/recall")
     async def recall(req: RecallRequest):
         return await service.recall_context(req.query, local_only=req.local_only)
 
     @app.post("/learn")
-    async def learn(req: LearnRequest):
-        return await service.store_learning(
+    async def learn(req: LearnRequest, background_tasks: BackgroundTasks):
+        result = await service.store_learning(
             insight=req.insight,
             tags=req.tags,
             share_with_team=req.share_with_team,
         )
 
+        # Check if this learning might warrant a Linear issue (bugs, errors, etc.)
+        background_tasks.add_task(
+            process_learning_for_linear,
+            insight=req.insight,
+            tags=req.tags or []
+        )
+
+        return result
+
     @app.post("/team")
     async def team(req: TeamRequest):
         return await service.query_team(req.query)
+
+    # ---- Linear Agent Analysis Endpoint ----
+    class AnalyzeRequest(BaseModel):
+        conversation: str
+
+    @app.post("/analyze-for-linear")
+    async def analyze_for_linear(req: AnalyzeRequest, background_tasks: BackgroundTasks):
+        """Analyze a chat conversation and create Linear issues if warranted.
+
+        This is called by the web chat after each conversation to intelligently
+        decide if issues should be created.
+        """
+        background_tasks.add_task(
+            analyze_conversation_for_issues,
+            conversation=req.conversation
+        )
+        return {"status": "analyzing", "message": "Conversation queued for analysis"}
 
     # ---- Web UI Endpoints ----
 
@@ -879,6 +1022,180 @@ def create_api_app(service: FlowService):
         }
 
     return app
+
+
+# ============ LINEAR AGENT INTEGRATION ============
+
+async def create_linear_issues_for_blockers(blockers: list[str], summary: str):
+    """Background task to analyze blockers and create Linear issues if needed.
+
+    Uses Cerebras to analyze blockers and determine if they should become
+    Linear issues, then creates them automatically.
+    """
+    try:
+        import linear_agent
+
+        # Build content for analysis
+        content = f"Session: {summary}\n\nBlockers:\n"
+        for blocker in blockers:
+            content += f"- {blocker}\n"
+
+        log(f"[LinearAgent] Analyzing {len(blockers)} blockers for potential issues...")
+
+        # Use Cerebras to analyze and identify actionable issues
+        issues_to_create = await linear_agent.analyze_for_issues(content)
+
+        if not issues_to_create:
+            log("[LinearAgent] No actionable issues identified from blockers")
+            return
+
+        log(f"[LinearAgent] Creating {len(issues_to_create)} Linear issues...")
+
+        # Create issues in Linear
+        for issue in issues_to_create:
+            created = await linear_agent.create_linear_issue(
+                title=issue.get("title", "Untitled"),
+                description=issue.get("description", ""),
+                issue_type=issue.get("type", "blocker"),
+                priority=issue.get("priority", 2)  # Default high priority for blockers
+            )
+            if created:
+                log(f"[LinearAgent] Created issue: {created.get('identifier')} - {issue.get('title')}")
+
+    except ImportError:
+        log("[LinearAgent] linear_agent module not available", "WARN")
+    except Exception as e:
+        log(f"[LinearAgent] Error creating issues: {e}", "ERROR")
+
+
+async def process_learning_for_linear(insight: str, tags: list[str]):
+    """Background task to check if a learning should create a Linear issue.
+
+    Only processes learnings that look like bugs or actionable issues.
+    """
+    try:
+        import linear_agent
+
+        # Quick check - only process if it looks like a bug or issue
+        bug_indicators = ["bug", "error", "fix", "broken", "issue", "problem", "fail", "crash", "exception"]
+        insight_lower = insight.lower()
+        tags_lower = [t.lower() for t in tags]
+
+        is_potential_issue = (
+            any(ind in insight_lower for ind in bug_indicators) or
+            any(ind in tag for tag in tags_lower for ind in bug_indicators)
+        )
+
+        if not is_potential_issue:
+            return  # Skip - not a bug-related learning
+
+        log(f"[LinearAgent] Processing learning for potential Linear issue...")
+
+        # Analyze with Cerebras
+        content = f"Learning: {insight}\nTags: {', '.join(tags)}"
+        issues = await linear_agent.analyze_for_issues(content)
+
+        if issues:
+            issue = issues[0]  # Take first suggested issue
+            created = await linear_agent.create_linear_issue(
+                title=issue.get("title", "Untitled"),
+                description=issue.get("description", ""),
+                issue_type=issue.get("type", "bug"),
+                priority=issue.get("priority", 2)
+            )
+            if created:
+                log(f"[LinearAgent] Created issue from learning: {created.get('identifier')}")
+
+    except ImportError:
+        pass  # linear_agent not available, silently skip
+    except Exception as e:
+        log(f"[LinearAgent] Error processing learning: {e}", "ERROR")
+
+
+async def analyze_conversation_for_issues(conversation: str):
+    """Analyze a chat conversation and create Linear issues if warranted.
+
+    Uses Cerebras to intelligently determine if the conversation contains
+    actionable items that should become Linear issues.
+    """
+    try:
+        import linear_agent
+        import cerebras_client
+
+        log("[LinearAgent] Analyzing conversation for potential issues...")
+
+        # Use Cerebras to analyze the conversation
+        analysis_prompt = f"""Analyze this chat conversation and determine if any Linear issues should be created.
+
+CONVERSATION:
+{conversation[:8000]}
+
+Look for:
+1. BUGS - Errors, failures, broken functionality mentioned
+2. BLOCKERS - Things preventing progress
+3. FEATURE REQUESTS - New functionality discussed
+4. ACTION ITEMS - Tasks that need to be done
+
+For each potential issue, provide:
+- title: Clear, concise title
+- description: What needs to be done
+- type: "bug", "blocker", "feature", or "task"
+- priority: 1 (urgent), 2 (high), 3 (medium), 4 (low)
+- reason: Why this should be a Linear issue
+
+IMPORTANT: Only create issues for ACTIONABLE items. Don't create issues for:
+- General questions or discussions
+- Completed work
+- Things already resolved in the conversation
+
+Return a JSON array. If nothing warrants an issue, return [].
+
+Example:
+[{{"title": "Fix Stripe webhook silent failures", "description": "Webhook fails silently with Apple Pay - no error logs", "type": "bug", "priority": 1, "reason": "Critical payment issue affecting revenue"}}]
+
+Respond with ONLY the JSON array."""
+
+        response = await cerebras_client.quick_answer(
+            analysis_prompt,
+            system="You are a project manager analyzing conversations to identify actionable work items. Be selective - only flag truly important items."
+        )
+
+        # Parse response
+        import json
+        try:
+            start = response.find('[')
+            end = response.rfind(']') + 1
+            if start >= 0 and end > start:
+                issues = json.loads(response[start:end])
+                if not isinstance(issues, list):
+                    issues = []
+            else:
+                issues = []
+        except json.JSONDecodeError:
+            issues = []
+
+        if not issues:
+            log("[LinearAgent] No actionable issues found in conversation")
+            return
+
+        log(f"[LinearAgent] Found {len(issues)} potential issues in conversation")
+
+        # Create issues in Linear
+        for issue in issues:
+            log(f"[LinearAgent] Creating issue: {issue.get('title')} (reason: {issue.get('reason', 'N/A')})")
+            created = await linear_agent.create_linear_issue(
+                title=issue.get("title", "Untitled"),
+                description=f"{issue.get('description', '')}\n\n---\n_Reason: {issue.get('reason', 'Identified from chat conversation')}_",
+                issue_type=issue.get("type", "task"),
+                priority=issue.get("priority", 3)
+            )
+            if created:
+                log(f"[LinearAgent] Created: {created.get('identifier')} - {issue.get('title')}")
+
+    except ImportError as e:
+        log(f"[LinearAgent] Module not available: {e}", "WARN")
+    except Exception as e:
+        log(f"[LinearAgent] Error analyzing conversation: {e}", "ERROR")
 
 
 async def run_api(service: FlowService, port: int = 8090):

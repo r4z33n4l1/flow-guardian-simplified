@@ -80,6 +80,40 @@ Upload PDFs, text files, and markdown to add context:
 - PyMuPDF for PDF text extraction
 - Automatic summarization via Cerebras
 
+### 4. Linear Agent Integration (NEW)
+Automatic issue creation in Linear based on conversations:
+
+```
+Chat Conversation → Cerebras Analysis → Linear Issues Created
+                         ↓
+              Identifies: bugs, blockers, features, tasks
+                         ↓
+              Creates issues with appropriate priority
+```
+
+**How it works:**
+1. User chats in web UI about bugs, blockers, or issues
+2. After response, conversation is analyzed by Cerebras
+3. Actionable items are identified (bugs → Urgent, features → Medium)
+4. Linear issues are created automatically in configured project
+
+**Triggers:**
+- `/capture` with blockers → Creates Linear issues for blockers
+- `/learn` with bug keywords → Creates Linear issues for bugs
+- Web chat → Analyzes full conversation and creates relevant issues
+
+### 5. Auto-Documentation Generation
+The daemon automatically generates documentation:
+
+- **FAQ**: Generated from learnings and solved issues
+- **Weekly Summary**: Sessions, issues, and learnings overview
+- **Stored in Linear**: Documents saved to configured project
+
+Triggers when:
+- 5+ insights captured in a session
+- 6+ hours since last report
+- 20+ extractions since last report
+
 ## MCP Tools (for Claude Code)
 
 ```python
@@ -113,8 +147,9 @@ flow_team(query="authentication patterns")
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/recall` | POST | Search memory (supports `local_only` for speed) |
-| `/learn` | POST | Store new insight |
-| `/capture` | POST | Save session context |
+| `/learn` | POST | Store new insight (triggers Linear analysis for bugs) |
+| `/capture` | POST | Save session context (triggers Linear issues for blockers) |
+| `/analyze-for-linear` | POST | Analyze conversation and create Linear issues |
 | `/sessions` | GET | List sessions |
 | `/learnings` | GET | List learnings (filterable by tag) |
 | `/documents` | POST | Upload file |
@@ -127,9 +162,12 @@ flow-guardian/
 ├── server.py              # Unified backend (daemon + API + MCP)
 ├── memory.py              # Local JSON storage
 ├── backboard_client.py    # Backboard.io integration
-├── cerebras_client.py     # Cerebras LLM client
+├── cerebras_client.py     # Cerebras LLM client (+ async quick_answer)
 ├── capture.py             # Git state capture
 ├── session_parser.py      # Claude Code JSONL parser
+├── linear_client.py       # Linear GraphQL API client (issues + docs)
+├── linear_agent.py        # Intelligent issue creation from content
+├── report_generator.py    # Auto-generates FAQ and Weekly Summary docs
 │
 ├── flow-web/              # Next.js frontend
 │   ├── app/
@@ -162,6 +200,10 @@ BACKBOARD_PERSONAL_THREAD_ID=...
 # Optional
 BACKBOARD_TEAM_THREAD_ID=...
 FLOW_GUARDIAN_URL=http://localhost:8090  # For web UI
+
+# Linear Integration (optional)
+LINEAR_API_KEY=lin_api_...              # Linear API key for issue/doc creation
+LINEAR_PROJECT_ID=...                    # Project ID where docs are stored
 ```
 
 ## Running Modes
