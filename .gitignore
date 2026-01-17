@@ -46,3 +46,4 @@ Thumbs.db
 
 # Embedded repositories
 testsql/sqlite/
+.mcp.json
