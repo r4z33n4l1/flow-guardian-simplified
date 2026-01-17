@@ -33,6 +33,17 @@
           }
         ]
       }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/flow-session-end.sh"
+          }
+        ]
+      }
     ]
   }
 }
