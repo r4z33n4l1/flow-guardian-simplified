@@ -11,7 +11,7 @@ class TestAnalyzeConversationForIssues:
     async def test_creates_issues_from_bug_conversation(self):
         """analyze_conversation_for_issues should create issues for bugs."""
         # Import the function directly
-        import sys
+        # sys.path.insert(0, '/Users/razeenali/Projs/Side/8090hack/flow-guardian')
         sys.path.insert(0, '/Users/razeenali/Projs/Side/8090hack/flow-guardian')
 
         # We need to mock at the point of import within the function
