@@ -352,6 +352,100 @@ class TestTeamMemory:
             assert result == "Team results"
 
 
+class TestSetupFunctions:
+    """Tests for setup functions (create_assistant, create_thread)."""
+
+    @pytest.mark.asyncio
+    async def test_create_assistant(self, monkeypatch):
+        """create_assistant should create assistant and return ID."""
+        monkeypatch.setattr(backboard_client, 'API_KEY', "test-key")
+
+        mock_response = mock.MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"id": "assistant_123"}
+
+        with mock.patch.object(
+            backboard_client, '_request_with_retry',
+            return_value=mock_response
+        ) as mock_request:
+            result = await backboard_client.create_assistant(
+                name="test-assistant",
+                llm_provider="cerebras"
+            )
+
+            mock_request.assert_called_once()
+            call_args = mock_request.call_args
+            assert call_args.args[0] == "post"
+            assert "/assistants" in call_args.args[1]
+            assert call_args.kwargs["json"]["name"] == "test-assistant"
+            assert call_args.kwargs["json"]["llm_provider"] == "cerebras"
+            assert result == "assistant_123"
+
+    @pytest.mark.asyncio
+    async def test_create_assistant_default_provider(self, monkeypatch):
+        """create_assistant should use cerebras as default provider."""
+        monkeypatch.setattr(backboard_client, 'API_KEY', "test-key")
+
+        mock_response = mock.MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"id": "assistant_456"}
+
+        with mock.patch.object(
+            backboard_client, '_request_with_retry',
+            return_value=mock_response
+        ) as mock_request:
+            result = await backboard_client.create_assistant(name="my-assistant")
+
+            call_args = mock_request.call_args
+            assert call_args.kwargs["json"]["llm_provider"] == "cerebras"
+            assert result == "assistant_456"
+
+    @pytest.mark.asyncio
+    async def test_create_thread(self, monkeypatch):
+        """create_thread should create thread and return ID."""
+        monkeypatch.setattr(backboard_client, 'API_KEY', "test-key")
+
+        mock_response = mock.MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"id": "thread_789"}
+
+        with mock.patch.object(
+            backboard_client, '_request_with_retry',
+            return_value=mock_response
+        ) as mock_request:
+            result = await backboard_client.create_thread(assistant_id="assistant_123")
+
+            mock_request.assert_called_once()
+            call_args = mock_request.call_args
+            assert call_args.args[0] == "post"
+            assert "/assistants/assistant_123/threads" in call_args.args[1]
+            assert result == "thread_789"
+
+    @pytest.mark.asyncio
+    async def test_create_assistant_auth_error(self, monkeypatch):
+        """create_assistant should raise BackboardAuthError on 401."""
+        monkeypatch.setattr(backboard_client, 'API_KEY', "invalid-key")
+
+        with mock.patch.object(
+            backboard_client, '_request_with_retry',
+            side_effect=backboard_client.BackboardAuthError("Invalid API key")
+        ):
+            with pytest.raises(backboard_client.BackboardAuthError):
+                await backboard_client.create_assistant(name="test-assistant")
+
+    @pytest.mark.asyncio
+    async def test_create_thread_auth_error(self, monkeypatch):
+        """create_thread should raise BackboardAuthError on 401."""
+        monkeypatch.setattr(backboard_client, 'API_KEY', "invalid-key")
+
+        with mock.patch.object(
+            backboard_client, '_request_with_retry',
+            side_effect=backboard_client.BackboardAuthError("Invalid API key")
+        ):
+            with pytest.raises(backboard_client.BackboardAuthError):
+                await backboard_client.create_thread(assistant_id="assistant_123")
+
+
 class TestRunAsync:
     """Tests for run_async helper."""
 

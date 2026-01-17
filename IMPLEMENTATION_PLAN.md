@@ -189,7 +189,7 @@
 - [x] Beautiful Rich output panels for all commands — Color-coded panels for save, resume, learn, recall, team, status, history
 - [x] Edge case handling: non-git repos, empty repos, API failures — Verified working in non-git directories
 - [ ] Demo script preparation — Optional polish item
-- [x] **Test infrastructure** — 120 passing tests covering all core modules
+- [x] **Test infrastructure** — 132 passing tests covering all core modules
 
 ---
 
@@ -207,14 +207,15 @@ flow-guardian/
 ├── src/lib/             # Shared utilities (currently empty)
 ├── specs/               # Feature PRDs (10 files, complete)
 ├── docs/                # HACKATHON_PLAN.md with reference code
-├── tests/               # ✅ Test suite - 120 passing tests
+├── tests/               # ✅ Test suite - 132 passing tests
 │   ├── __init__.py
 │   ├── test_memory.py
 │   ├── test_capture.py
 │   ├── test_restore.py
 │   ├── test_cerebras_client.py
 │   ├── test_backboard_client.py
-│   └── test_flow_cli.py
+│   ├── test_flow_cli.py
+│   └── test_setup_assistants.py
 └── pytest.ini           # ✅ Pytest configuration
 ```
 
@@ -253,7 +254,7 @@ flow-guardian/
 
 ## Testing
 
-**Test Suite:** 120 passing tests with pytest
+**Test Suite:** 132 passing tests with pytest
 
 | Module | Test File | Coverage |
 |--------|-----------|----------|
@@ -261,7 +262,8 @@ flow-guardian/
 | `capture.py` | `test_capture.py` | Git state capture, diff summary, context analysis |
 | `restore.py` | `test_restore.py` | Change detection, restoration messages, conflicts |
 | `cerebras_client.py` | `test_cerebras_client.py` | LLM inference, error handling, rate limiting |
-| `backboard_client.py` | `test_backboard_client.py` | API calls, retry logic, error classes |
+| `backboard_client.py` | `test_backboard_client.py` | API calls, retry logic, error classes, create_assistant, create_thread |
 | `flow.py` | `test_flow_cli.py` | All CLI commands (save, resume, learn, recall, team, status, history) |
+| `setup_assistants.py` | `test_setup_assistants.py` | Personal and team assistant setup, error handling |
 
 **Run tests:** `pytest` or `pytest -v` for verbose output
