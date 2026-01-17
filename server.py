@@ -282,26 +282,53 @@ Example output: ["auth", "jwt", "token", "refresh"]""",
                         "score": 4,  # High score - actually matched query!
                     })
 
-        # Only search Backboard if local results are insufficient
-        # This saves an API call for most queries
+        # Search Backboard when:
+        # 1. local_only=False (frontend explicitly requested full search)
+        # 2. OR local results are insufficient (score < 3)
+        # When frontend passes local_only=False, it already determined local is insufficient
         local_has_good_results = any(r.get("score", 0) >= 3 for r in results)
 
-        if not local_only and not local_has_good_results and self.backboard_available():
-            thread_id = os.environ.get("BACKBOARD_PERSONAL_THREAD_ID")
-            if thread_id:
-                try:
-                    log("Local context insufficient, querying Backboard...", "INFO")
-                    enhanced_query = " ".join(search_terms) if search_terms else query
-                    cloud_response = await self.backboard.recall(thread_id, enhanced_query)
-                    if cloud_response and len(cloud_response) > 20:
-                        results.append({
-                            "content": cloud_response,
-                            "source": "backboard",
-                            "timestamp": datetime.now().isoformat(),
-                            "score": 2,  # Lower than good local matches
-                        })
-                except Exception as e:
-                    log(f"Backboard search error: {e}", "WARN")
+        # Always query Backboard when local_only=False - the frontend already did the intelligence check
+        if not local_only:
+            if not self.backboard_available():
+                log("Backboard not available (BACKBOARD_API_KEY not set)", "DEBUG")
+            else:
+                thread_id = os.environ.get("BACKBOARD_PERSONAL_THREAD_ID")
+                if not thread_id:
+                    log("Backboard available but BACKBOARD_PERSONAL_THREAD_ID not set", "WARN")
+                else:
+                    try:
+                        log(f"Querying Backboard (local_only={local_only}, local_results={len(results)}, has_good={local_has_good_results})...", "INFO")
+                        enhanced_query = " ".join(search_terms) if search_terms else query
+                        cloud_response = await self.backboard.recall(thread_id, enhanced_query)
+                        if cloud_response and len(cloud_response) > 20:
+                            results.append({
+                                "content": cloud_response,
+                                "source": "backboard",
+                                "timestamp": datetime.now().isoformat(),
+                                "score": 2,  # Lower than good local matches
+                            })
+                    except Exception as e:
+                        log(f"Backboard search error: {e}", "WARN")
+
+        # Also search Linear documents if available (Phase 3: Project docs)
+        if not local_only and os.environ.get("LINEAR_API_KEY"):
+            try:
+                import linear_client
+                enhanced_query = " ".join(search_terms) if search_terms else query
+                linear_docs = await linear_client.search_documents(enhanced_query, limit=5)
+                for doc in linear_docs:
+                    results.append({
+                        "content": f"**Linear Doc:** {doc.get('title', 'Untitled')}\n{doc.get('content', '')}",
+                        "source": "linear",
+                        "url": doc.get("url"),
+                        "timestamp": doc.get("updated_at"),
+                        "score": 3,  # Higher score - project documentation
+                    })
+                if linear_docs:
+                    log(f"Found {len(linear_docs)} Linear documents matching query", "INFO")
+            except Exception as e:
+                log(f"Linear document search error: {e}", "DEBUG")
 
         # Sort by score (higher first) and limit
         results.sort(key=lambda x: x.get("score", 0), reverse=True)
@@ -787,6 +814,218 @@ def create_api_app(service: FlowService):
         query: str
 
     # Routes
+    # ---- Knowledge Graph Endpoints ----
+    @app.get("/graph")
+    async def get_knowledge_graph(
+        limit: int = Query(default=100, ge=1, le=500),
+        include_sessions: bool = Query(default=True),
+        include_learnings: bool = Query(default=True),
+    ):
+        """Get knowledge graph data with nodes and edges for visualization."""
+        nodes = []
+        edges = []
+        node_ids = set()
+        tag_nodes = {}  # Track tag nodes to create edges
+
+        # Get sessions
+        if include_sessions:
+            sessions = service.memory.list_sessions(limit=limit)
+            for session in sessions:
+                session_id = session.get("id", f"session_{session.get('timestamp', '')}")
+                if session_id not in node_ids:
+                    nodes.append({
+                        "id": session_id,
+                        "type": "session",
+                        "label": session.get("summary", "Untitled Session")[:50],
+                        "data": {
+                            "summary": session.get("summary", ""),
+                            "branch": session.get("branch", ""),
+                            "timestamp": session.get("timestamp", ""),
+                        }
+                    })
+                    node_ids.add(session_id)
+
+        # Get learnings
+        if include_learnings:
+            learnings = service.memory.get_all_learnings()[:limit]
+            for learning in learnings:
+                learning_id = learning.get("id", f"learning_{learning.get('timestamp', '')}")
+                if learning_id not in node_ids:
+                    insight = learning.get("insight") or learning.get("text", "")
+                    nodes.append({
+                        "id": learning_id,
+                        "type": "learning",
+                        "label": insight[:50] + ("..." if len(insight) > 50 else ""),
+                        "data": {
+                            "insight": insight,
+                            "tags": learning.get("tags", []),
+                            "timestamp": learning.get("timestamp", ""),
+                            "shared": learning.get("shared", False),
+                        }
+                    })
+                    node_ids.add(learning_id)
+
+                    # Create tag nodes and edges
+                    for tag in learning.get("tags", []):
+                        tag_id = f"tag_{tag}"
+                        if tag_id not in node_ids:
+                            nodes.append({
+                                "id": tag_id,
+                                "type": "tag",
+                                "label": f"#{tag}",
+                                "data": {"tag": tag}
+                            })
+                            node_ids.add(tag_id)
+                            tag_nodes[tag] = tag_id
+
+                        # Edge from learning to tag
+                        edges.append({
+                            "id": f"e_{learning_id}_{tag_id}",
+                            "source": learning_id,
+                            "target": tag_id,
+                            "type": "tagged",
+                        })
+
+        # Create edges between learnings with shared tags
+        learnings_by_tag = {}
+        if include_learnings:
+            for learning in learnings:  # Reuse learnings from earlier fetch
+                learning_id = learning.get("id", f"learning_{learning.get('timestamp', '')}")
+                for tag in learning.get("tags", []):
+                    if tag not in learnings_by_tag:
+                        learnings_by_tag[tag] = []
+                    learnings_by_tag[tag].append(learning_id)
+
+            # Create edges between learnings that share tags (limit to prevent too many edges)
+            edge_set = set()
+            for tag, learning_ids in learnings_by_tag.items():
+                if len(learning_ids) > 1 and len(learning_ids) <= 5:  # Only connect if reasonable number
+                    for i, lid1 in enumerate(learning_ids):
+                        for lid2 in learning_ids[i+1:]:
+                            edge_key = tuple(sorted([lid1, lid2]))
+                            if edge_key not in edge_set:
+                                edges.append({
+                                    "id": f"e_shared_{lid1}_{lid2}",
+                                    "source": lid1,
+                                    "target": lid2,
+                                    "type": "related",
+                                    "label": f"#{tag}",
+                                })
+                                edge_set.add(edge_key)
+
+        return {
+            "nodes": nodes,
+            "edges": edges,
+            "stats": {
+                "total_nodes": len(nodes),
+                "total_edges": len(edges),
+                "sessions": len([n for n in nodes if n["type"] == "session"]),
+                "learnings": len([n for n in nodes if n["type"] == "learning"]),
+                "tags": len([n for n in nodes if n["type"] == "tag"]),
+            }
+        }
+
+    @app.get("/suggestions")
+    async def get_suggestions(limit: int = Query(default=5, ge=1, le=10)):
+        """Get proactive AI suggestions based on recent activity."""
+        try:
+            suggestions = []
+
+            # Get recent learnings and sessions
+            recent_learnings = service.memory.get_all_learnings()[:20]
+            recent_sessions = service.memory.list_sessions(limit=10)
+
+            # If no data, return empty suggestions
+            if not recent_learnings and not recent_sessions:
+                return {"suggestions": [], "message": "No activity yet to generate suggestions"}
+
+            # Build context for Cerebras
+            context_parts = []
+
+            for learning in recent_learnings[:5]:
+                insight = learning.get("insight") or learning.get("text", "")
+                tags = learning.get("tags", [])
+                context_parts.append(f"- Learning: {insight[:200]} (tags: {', '.join(tags)})")
+
+            for session in recent_sessions[:3]:
+                summary = session.get("summary", "")
+                branch = session.get("branch", "")
+                context_parts.append(f"- Session on {branch}: {summary[:200]}")
+
+            context = "\n".join(context_parts)
+
+            # Generate suggestions using Cerebras
+            prompt = f"""Based on this developer's recent activity, generate {limit} proactive suggestions to help them.
+
+RECENT ACTIVITY:
+{context}
+
+Generate helpful suggestions like:
+- Connecting related concepts they learned
+- Reminding them of unfinished work
+- Suggesting they document patterns they keep using
+- Highlighting potential issues or blockers
+- Recommending they share useful learnings with the team
+
+Return a JSON array with objects containing:
+- "title": Short suggestion title (max 50 chars)
+- "description": Helpful explanation (max 150 chars)
+- "type": One of "connect", "remind", "document", "alert", "share"
+- "relevance": Score 1-10 (how relevant/useful)
+- "related_items": Array of related learning/session IDs if any
+
+Example:
+[{{"title": "Connect auth patterns", "description": "You learned about JWT and OAuth separately - consider documenting how they work together in your project", "type": "connect", "relevance": 8, "related_items": []}}]
+
+Return ONLY the JSON array."""
+
+            try:
+                response = service.cerebras.complete(
+                    prompt=prompt,
+                    system="You are a helpful AI assistant that provides proactive suggestions to developers based on their activity. Be concise and actionable.",
+                    json_mode=True,
+                    max_tokens=1000
+                )
+
+                # Parse response - extract JSON array
+                start = response.find('[')
+                end = response.rfind(']') + 1
+                if start >= 0 and end > start:
+                    parsed = json.loads(response[start:end])
+                    if isinstance(parsed, list):
+                        suggestions = parsed[:limit]
+            except Exception as e:
+                log(f"Suggestion generation error: {e}", "WARN")
+
+            # Fallback: generate basic suggestions if AI fails
+            if not suggestions:
+                if recent_learnings:
+                    suggestions.append({
+                        "title": "Review recent learnings",
+                        "description": f"You have {len(recent_learnings)} learnings. Consider organizing them with tags.",
+                        "type": "document",
+                        "relevance": 5,
+                        "related_items": []
+                    })
+                if recent_sessions:
+                    latest = recent_sessions[0]
+                    suggestions.append({
+                        "title": "Continue your work",
+                        "description": f"Your last session was about: {latest.get('summary', 'Unknown')[:100]}",
+                        "type": "remind",
+                        "relevance": 7,
+                        "related_items": [latest.get("id")]
+                    })
+
+            return {
+                "suggestions": suggestions,
+                "generated_at": datetime.now().isoformat(),
+            }
+
+        except Exception as e:
+            log(f"Suggestions endpoint error: {e}", "ERROR")
+            return {"suggestions": [], "error": str(e)}
+
     @app.get("/health")
     async def health():
         return {"status": "ok", "service": "flow-guardian"}
@@ -1282,9 +1521,20 @@ async def run_mcp(service: FlowService):
         try:
             if name == "flow_recall":
                 result = await service.recall_context(arguments["query"])
-                text = f"Found {len(result['results'])} results for '{result['query']}':\n"
-                for r in result["results"][:5]:
-                    text += f"\n- {r.get('content', r)[:200]}..."
+                sources = {}
+                for r in result["results"]:
+                    src = r.get("source", "unknown")
+                    sources[src] = sources.get(src, 0) + 1
+                source_summary = ", ".join(f"{v} from {k}" for k, v in sources.items())
+                text = f"Found {len(result['results'])} results for '{result['query']}' ({source_summary}):\n"
+                for r in result["results"][:7]:
+                    source = r.get("source", "unknown")
+                    content = r.get("content", str(r))[:400]
+                    url = r.get("url", "")
+                    text += f"\n[{source}] {content}"
+                    if url:
+                        text += f"\n  Link: {url}"
+                    text += "\n"
                 return [TextContent(type="text", text=text)]
 
             elif name == "flow_capture":

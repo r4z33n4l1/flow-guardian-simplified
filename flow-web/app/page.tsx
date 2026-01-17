@@ -1,11 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { ChatInterface } from "@/components/chat/chat-interface";
 import type { Message } from "@/components/chat/message-bubble";
 import { UploadModal } from "@/components/upload/upload-modal";
 import { ActivityFeed } from "@/components/activity/activity-feed";
+import { SuggestionsWidget } from "@/components/suggestions/suggestions-panel";
 import { Button } from "@/components/ui/button";
+import { Network, LayoutDashboard, Upload, Activity } from "lucide-react";
 
 export default function Home() {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
@@ -65,26 +68,46 @@ export default function Home() {
 
   return (
     <div className="h-screen flex flex-col bg-background overflow-hidden">
-      <header className="flex-shrink-0 border-b px-6 py-4">
+      <header className="flex-shrink-0 border-b border-zinc-800 px-6 py-3 bg-zinc-900/50 backdrop-blur">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold">Flow Guardian</h1>
-            <p className="text-sm text-muted-foreground">Team memory assistant</p>
+          <div className="flex items-center gap-6">
+            <div>
+              <h1 className="text-xl font-semibold text-white">Flow Guardian</h1>
+              <p className="text-xs text-zinc-500">AI Team Memory</p>
+            </div>
+            <nav className="hidden md:flex items-center gap-1">
+              <Link href="/graph">
+                <Button variant="ghost" size="sm" className="gap-2 text-zinc-400 hover:text-white hover:bg-zinc-800">
+                  <Network className="w-4 h-4" />
+                  Graph
+                </Button>
+              </Link>
+              <Link href="/dashboard">
+                <Button variant="ghost" size="sm" className="gap-2 text-zinc-400 hover:text-white hover:bg-zinc-800">
+                  <LayoutDashboard className="w-4 h-4" />
+                  Dashboard
+                </Button>
+              </Link>
+            </nav>
           </div>
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setShowActivity(!showActivity)}
+              className="gap-2 text-zinc-400 hover:text-white"
             >
-              {showActivity ? "Hide Activity" : "Show Activity"}
+              <Activity className="w-4 h-4" />
+              <span className="hidden sm:inline">{showActivity ? "Hide" : "Show"}</span>
             </Button>
             <Button
               variant="outline"
               size="sm"
               onClick={() => setIsUploadOpen(true)}
+              className="gap-2 border-zinc-700 text-zinc-300 hover:bg-zinc-800"
             >
-              + Add Context
+              <Upload className="w-4 h-4" />
+              <span className="hidden sm:inline">Add Context</span>
             </Button>
           </div>
         </div>
@@ -116,6 +139,9 @@ export default function Home() {
         onClose={() => setIsUploadOpen(false)}
         onUploadComplete={() => setIsUploadOpen(false)}
       />
+
+      {/* AI Suggestions Widget */}
+      <SuggestionsWidget />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { streamChatCompletion, chatCompletion, buildSystemPrompt, type Message } from '@/lib/cerebras';
+import { streamChatCompletion, buildSystemPrompt, type Message } from '@/lib/cerebras';
 
 const FLOW_GUARDIAN_URL = process.env.FLOW_GUARDIAN_URL || 'http://localhost:8090';
 
@@ -71,18 +71,6 @@ async function getContextFromBackboard(query: string, localOnly: boolean = true)
   }
 }
 
-// Check if query is about the conversation itself (meta-query)
-function isMetaQuery(query: string): boolean {
-  const metaPatterns = [
-    /last (question|message|thing)/i,
-    /previous (question|message)/i,
-    /what did (i|you) (ask|say)/i,
-    /repeat/i,
-    /earlier in (this|our) (chat|conversation)/i,
-  ];
-  return metaPatterns.some(pattern => pattern.test(query));
-}
-
 // Check if query is asking about the system's knowledge/context (debug query)
 function isDebugQuery(query: string): boolean {
   const debugPatterns = [
@@ -105,79 +93,12 @@ function formatContextAsResponse(context: string[]): string {
   return `Here's what I have in my local knowledge base:\n\n${formatted}`;
 }
 
-// Format conversation history for context
-function formatConversationHistory(messages: Array<{ role: string; content: string }>): string {
-  if (messages.length === 0) return '';
-
-  const history = messages.slice(-10).map((m, i) => {
-    const role = m.role === 'user' ? 'User' : 'Assistant';
-    return `${role}: ${m.content}`;
-  }).join('\n');
-
-  return `CONVERSATION HISTORY:\n${history}`;
-}
-
-// Quick check: Can Cerebras answer from local context or conversation history?
-async function canAnswerFromContext(
-  query: string,
-  context: string[],
-  conversationHistory: string,
-  apiKey: string
-): Promise<{ canAnswer: boolean; quickAnswer?: string }> {
-  const isMeta = isMetaQuery(query);
-
-  // For meta queries, we can answer from conversation history alone
-  if (isMeta && conversationHistory) {
-    const metaPrompt = `Based on the conversation history below, answer this question: "${query}"
-
-${conversationHistory}
-
-Provide a brief, direct answer.`;
-
-    try {
-      const response = await chatCompletion(
-        [{ role: 'user', content: metaPrompt }],
-        apiKey,
-        { max_tokens: 300, temperature: 0.3 }
-      );
-      console.log('[Chat] Answering meta-query from conversation history (fast path)');
-      return { canAnswer: true, quickAnswer: response };
-    } catch (error) {
-      console.error('[Chat] Meta-query check failed:', error);
-    }
-  }
-
-  // For knowledge queries, check if we have relevant context
-  if (context.length === 0) {
-    return { canAnswer: false };
-  }
-
-  const checkPrompt = `Based on the context below, can you answer this question: "${query}"
-
-${conversationHistory ? conversationHistory + '\n\n---\n\n' : ''}KNOWLEDGE BASE:
-${context.slice(0, 5).join('\n---\n')}
-
-If you CAN answer from this context, provide a brief answer.
-If you CANNOT answer (context doesn't contain relevant info), respond ONLY with: NEED_MORE_CONTEXT`;
-
-  try {
-    const response = await chatCompletion(
-      [{ role: 'user', content: checkPrompt }],
-      apiKey,
-      { max_tokens: 300, temperature: 0.3 }
-    );
-
-    if (response.trim() === 'NEED_MORE_CONTEXT' || response.includes('NEED_MORE_CONTEXT')) {
-      console.log('[Chat] Local context insufficient, will fetch from Backboard');
-      return { canAnswer: false };
-    }
-
-    console.log('[Chat] Answering from local context (fast path)');
-    return { canAnswer: true, quickAnswer: response };
-  } catch (error) {
-    console.error('[Chat] Quick check failed:', error);
-    return { canAnswer: false };
-  }
+// Check if local context has relevant terms for the query
+function hasRelevantLocalContext(query: string, context: string[]): boolean {
+  if (context.length === 0) return false;
+  const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+  const contextText = context.join(' ').toLowerCase();
+  return queryWords.some(word => contextText.includes(word));
 }
 
 export async function POST(request: Request) {
@@ -203,9 +124,6 @@ export async function POST(request: Request) {
     // Get the latest user message for context query
     const latestUserMessage = messages.filter((m) => m.role === 'user').pop();
     const contextQuery = latestUserMessage?.content || '';
-
-    // Format conversation history for context
-    const conversationHistory = formatConversationHistory(messages.slice(0, -1)); // Exclude current message
 
     // PHASE 1: Try with local context only (fast)
     console.log('[Chat] Phase 1: Fetching local context...');
@@ -233,34 +151,12 @@ export async function POST(request: Request) {
       });
     }
 
-    // Quick check: Can we answer from local context or conversation history?
-    const { canAnswer, quickAnswer } = await canAnswerFromContext(contextQuery, context, conversationHistory, apiKey);
-
     // PHASE 2: If local context insufficient, fetch from Backboard
-    if (!canAnswer) {
-      console.log('[Chat] Phase 2: Fetching from Backboard...');
+    if (!hasRelevantLocalContext(contextQuery, context)) {
+      console.log('[Chat] Phase 2: Local context insufficient, fetching from Backboard...');
       context = await getContextFromBackboard(contextQuery, false); // Include Backboard
-    }
-
-    // If we got a quick answer, return it directly (no streaming needed)
-    if (canAnswer && quickAnswer) {
-      const encoder = new TextEncoder();
-      const stream = new ReadableStream({
-        start(controller) {
-          const data = JSON.stringify({ content: quickAnswer });
-          controller.enqueue(encoder.encode(`data: ${data}\n\n`));
-          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-          controller.close();
-        },
-      });
-
-      return new Response(stream, {
-        headers: {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          'Connection': 'keep-alive',
-        },
-      });
+    } else {
+      console.log('[Chat] Local context has relevant terms, using local context');
     }
 
     // Build messages with system prompt for full response

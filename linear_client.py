@@ -523,6 +523,72 @@ async def create_or_update_document(title: str, content: str) -> Optional[dict]:
         return doc
 
 
+async def search_documents(query: str = None, limit: int = 10) -> list[dict]:
+    """
+    Search for documents in Linear, optionally filtering by query.
+
+    Args:
+        query: Optional search term to filter documents by title/content
+        limit: Maximum number of documents to return
+
+    Returns:
+        List of document data with id, title, content snippet, url
+    """
+    project_id = os.environ.get("LINEAR_PROJECT_ID")
+
+    # GraphQL query to fetch documents
+    gql_query = """
+    query ProjectDocs($projectId: String!, $first: Int!) {
+        project(id: $projectId) {
+            documents(first: $first) {
+                nodes {
+                    id
+                    title
+                    content
+                    url
+                    createdAt
+                    updatedAt
+                }
+            }
+        }
+    }
+    """
+
+    try:
+        if not project_id:
+            print("[Linear] LINEAR_PROJECT_ID not set, cannot search documents")
+            return []
+
+        result = await linear_query(gql_query, {"projectId": project_id, "first": limit})
+        docs = result.get("data", {}).get("project", {}).get("documents", {}).get("nodes", [])
+
+        # Filter by query if provided
+        if query and docs:
+            query_lower = query.lower()
+            filtered = []
+            for doc in docs:
+                title = (doc.get("title") or "").lower()
+                content = (doc.get("content") or "").lower()
+                if query_lower in title or query_lower in content:
+                    filtered.append(doc)
+            docs = filtered
+
+        # Return formatted results
+        return [
+            {
+                "id": doc.get("id"),
+                "title": doc.get("title"),
+                "content": (doc.get("content") or "")[:500],  # Snippet
+                "url": doc.get("url"),
+                "updated_at": doc.get("updatedAt"),
+            }
+            for doc in docs
+        ]
+    except Exception as e:
+        print(f"[Linear] Error searching documents: {e}")
+        return []
+
+
 # CLI test
 if __name__ == "__main__":
     import asyncio
