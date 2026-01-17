@@ -434,10 +434,10 @@ flow-guardian/
 ## Known Issues & Technical Debt
 
 ### Minor Code Quality Issues
-- `restore.py`: Timezone handling logic repeated multiple times (lines 27, 32, 76, 80-81, 128-129) — could be extracted to helper
-- `backboard_client.py`: `store_message()` checks API_KEY twice redundantly
-- `cerebras_client.py`: Error detection uses string parsing ("401" in error_str) — brittle approach
-- Multiple files use `# type: ignore` for loose SDK type hints
+- ~~`restore.py`: Timezone handling logic repeated multiple times — could be extracted to helper~~ ✅ **FIXED:** Extracted `_parse_timestamp_naive()` helper
+- ~~`backboard_client.py`: `store_message()` checks API_KEY twice redundantly~~ ✅ **FIXED:** Check moved to start of function
+- `cerebras_client.py`: Error detection uses string parsing ("401" in error_str) — common pattern when SDKs don't expose typed error codes
+- Multiple files use `# type: ignore` for loose SDK type hints — acceptable for SDK compatibility
 
 ### Test Suite Notes
 - Some tests in `test_git_utils.py`, `test_capture.py`, `test_restore.py` run actual git commands (integration-style)
