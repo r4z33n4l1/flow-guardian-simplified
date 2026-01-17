@@ -44,8 +44,13 @@ def capture_git_state() -> dict:
     if success and status_output:
         for line in status_output.split("\n"):
             if line.strip():
-                # Format: "XY filename" where XY is status code
-                file_path = line[3:].strip()
+                # Format: "XY filename" - but .strip() may have removed leading space
+                # Find first space after status codes, then take filename
+                parts = line.split(maxsplit=1)
+                if len(parts) >= 2:
+                    file_path = parts[1].strip()
+                else:
+                    file_path = parts[0].strip()
                 # Handle renamed files (old -> new)
                 if " -> " in file_path:
                     file_path = file_path.split(" -> ")[1]
@@ -71,10 +76,20 @@ def capture_git_state() -> dict:
             "message": parts[1] if len(parts) > 1 else ""
         }
 
+    # Get files from last commit (fallback when tree is clean)
+    last_commit_files = []
+    if not uncommitted_files:
+        success, files_output = run_git_command([
+            "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"
+        ])
+        if success and files_output:
+            last_commit_files = [f.strip() for f in files_output.split("\n") if f.strip()]
+
     return {
         "is_git": True,
         "branch": branch,
         "uncommitted_files": uncommitted_files,
+        "last_commit_files": last_commit_files,  # Fallback when clean
         "recent_commits": recent_commits,
         "last_commit": last_commit
     }
@@ -156,7 +171,10 @@ def analyze_context(
         - files: Relevant files (from git state)
     """
     branch = git_state.get("branch", "unknown")
+    # Use uncommitted files, or fallback to last commit files if tree is clean
     files = git_state.get("uncommitted_files", [])
+    if not files:
+        files = git_state.get("last_commit_files", [])
     diff_summary = get_diff_summary()
 
     try:
