@@ -15,21 +15,21 @@ interface TeamLearning {
   author?: string;
 }
 
-// Generate gradient avatar colors based on string
+// Generate gradient avatar colors based on string - gold variations
 function stringToGradient(str: string): string {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
     hash = str.charCodeAt(i) + ((hash << 5) - hash);
   }
   const gradients = [
-    'from-indigo-500 to-purple-500',
-    'from-cyan-500 to-emerald-500',
-    'from-purple-500 to-pink-500',
-    'from-amber-500 to-orange-500',
-    'from-rose-500 to-pink-500',
-    'from-blue-500 to-indigo-500',
-    'from-emerald-500 to-teal-500',
-    'from-violet-500 to-purple-500',
+    'from-[#fca311] to-[#d4a017]',
+    'from-[#fca311]/90 to-[#d4a017]/90',
+    'from-[#fca311]/80 to-[#d4a017]/80',
+    'from-[#d4a017] to-[#fca311]',
+    'from-[#fca311]/70 to-[#d4a017]/70',
+    'from-[#d4a017]/90 to-[#fca311]/90',
+    'from-[#fca311]/85 to-[#d4a017]/85',
+    'from-[#d4a017]/80 to-[#fca311]/80',
   ];
   return gradients[Math.abs(hash) % gradients.length];
 }
@@ -64,35 +64,35 @@ function TeamLearningCard({ learning, index }: { learning: TeamLearning; index: 
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: Math.min(index * 0.05, 0.3) }}
-      className="group p-4 rounded-xl border border-white/[0.08] bg-slate-900/40 hover:bg-slate-800/50 transition-all"
+      className="group p-4 rounded-xl border border-[#fca311]/10 bg-[#14213d]/60 hover:bg-[#14213d]/80 hover:border-[#fca311]/20 transition-all"
     >
       <div className="flex gap-3">
         <div className={`h-10 w-10 rounded-xl bg-gradient-to-br ${avatarGradient} flex items-center justify-center shrink-0`}>
-          <span className="text-white text-sm font-medium">{initials}</span>
+          <span className="text-black text-sm font-medium">{initials}</span>
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <span className="text-sm font-medium text-white">{author}</span>
             <Badge
               variant="outline"
-              className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30 text-[10px] font-medium"
+              className="bg-[#fca311]/10 text-[#fca311] border-[#fca311]/30 text-[10px] font-medium"
             >
               <Share2 className="w-2.5 h-2.5 mr-1" />
               Shared
             </Badge>
-            <span className="text-xs text-slate-500 flex items-center gap-1 ml-auto">
+            <span className="text-xs text-[#e5e5e5]/50 flex items-center gap-1 ml-auto">
               <Clock className="w-3 h-3" />
               {formatTimeAgo(learning.timestamp)}
             </span>
           </div>
-          <p className="text-sm text-slate-300 line-clamp-3 leading-relaxed">{learning.insight}</p>
+          <p className="text-sm text-[#e5e5e5]/80 line-clamp-3 leading-relaxed">{learning.insight}</p>
           {learning.tags && learning.tags.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-2">
               {learning.tags.slice(0, 4).map((tag) => (
                 <Badge
                   key={tag}
                   variant="secondary"
-                  className="bg-violet-500/15 text-violet-300 border border-violet-500/30 text-xs"
+                  className="bg-[#fca311]/10 text-[#fca311] border border-[#fca311]/20 text-xs"
                 >
                   #{tag}
                 </Badge>
@@ -157,11 +157,11 @@ export function TeamFeed({ className = '', limit = 10 }: TeamFeedProps) {
   if (learnings.length === 0) {
     return (
       <div className={`text-center py-12 ${className}`}>
-        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-slate-800/50 flex items-center justify-center">
-          <Users className="w-8 h-8 text-slate-600" />
+        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#14213d] flex items-center justify-center">
+          <Users className="w-8 h-8 text-[#fca311]/40" />
         </div>
-        <p className="text-slate-400 font-medium">No team learnings yet</p>
-        <p className="text-slate-600 text-sm mt-1">
+        <p className="text-[#e5e5e5]/80 font-medium">No team learnings yet</p>
+        <p className="text-[#e5e5e5]/40 text-sm mt-1">
           Share insights to see them here
         </p>
       </div>
@@ -216,10 +216,10 @@ export function TeamActivityWidget() {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.5 }}
-      className="rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-5"
+      className="rounded-2xl border border-[#fca311]/10 hover:border-[#fca311]/20 bg-[#14213d]/80 backdrop-blur-xl p-5 transition-colors duration-300"
     >
       <div className="flex items-center gap-2 mb-4">
-        <Users className="w-5 h-5 text-emerald-400" />
+        <Users className="w-5 h-5 text-[#fca311]" />
         <h3 className="font-semibold text-white">Team Activity</h3>
       </div>
 
@@ -235,8 +235,8 @@ export function TeamActivityWidget() {
         </div>
       ) : learnings.length === 0 ? (
         <div className="text-center py-4">
-          <p className="text-slate-500 text-sm">No team activity yet</p>
-          <p className="text-slate-600 text-xs mt-1">Share learnings to collaborate</p>
+          <p className="text-[#e5e5e5]/60 text-sm">No team activity yet</p>
+          <p className="text-[#e5e5e5]/40 text-xs mt-1">Share learnings to collaborate</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -256,14 +256,14 @@ export function TeamActivityWidget() {
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: index * 0.1 }}
-                className="flex items-start gap-3 p-2 rounded-lg hover:bg-slate-800/30 transition-colors"
+                className="flex items-start gap-3 p-2 rounded-lg hover:bg-[#fca311]/5 transition-colors"
               >
                 <div className={`h-7 w-7 rounded-lg bg-gradient-to-br ${avatarGradient} flex items-center justify-center shrink-0`}>
-                  <span className="text-white text-[10px] font-medium">{initials}</span>
+                  <span className="text-black text-[10px] font-medium">{initials}</span>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs text-slate-300 line-clamp-2 leading-relaxed">{learning.insight}</p>
-                  <span className="text-[10px] text-slate-600 mt-1 block">
+                  <p className="text-xs text-[#e5e5e5]/80 line-clamp-2 leading-relaxed">{learning.insight}</p>
+                  <span className="text-[10px] text-[#e5e5e5]/40 mt-1 block">
                     {formatTimeAgo(learning.timestamp)}
                   </span>
                 </div>

@@ -51,61 +51,69 @@
 
 :root {
   --radius: 0.75rem;
-  --background: #030712;
-  --foreground: #f8fafc;
-  --card: #0f172a;
-  --card-foreground: #f8fafc;
-  --popover: #0f172a;
-  --popover-foreground: #f8fafc;
-  --primary: #a855f7;
-  --primary-foreground: #ffffff;
-  --secondary: #1e293b;
-  --secondary-foreground: #e2e8f0;
-  --muted: #1e293b;
-  --muted-foreground: #94a3b8;
-  --accent: #6366f1;
-  --accent-foreground: #ffffff;
+
+  /* Black & Gold Elegance Palette */
+  --color-black: #000000;
+  --color-prussian: #14213d;
+  --color-gold: #fca311;
+  --color-alabaster: #e5e5e5;
+  --color-white: #ffffff;
+
+  /* Semantic mappings */
+  --background: #000000;
+  --foreground: #ffffff;
+  --card: #14213d;
+  --card-foreground: #ffffff;
+  --popover: #14213d;
+  --popover-foreground: #ffffff;
+  --primary: #fca311;
+  --primary-foreground: #000000;
+  --secondary: #14213d;
+  --secondary-foreground: #e5e5e5;
+  --muted: #14213d;
+  --muted-foreground: #e5e5e5;
+  --accent: #fca311;
+  --accent-foreground: #000000;
   --destructive: #ef4444;
-  --border: rgba(148, 163, 184, 0.1);
-  --input: rgba(148, 163, 184, 0.15);
-  --ring: #a855f7;
+  --border: rgba(252, 163, 17, 0.15);
+  --input: rgba(252, 163, 17, 0.1);
+  --ring: #fca311;
 
-  /* Custom Flow Guardian colors */
-  --fg-aurora-1: #a855f7;
-  --fg-aurora-2: #6366f1;
-  --fg-aurora-3: #06b6d4;
-  --fg-aurora-4: #10b981;
-  --fg-glow: rgba(168, 85, 247, 0.4);
-  --fg-surface: rgba(15, 23, 42, 0.8);
-  --fg-surface-elevated: rgba(30, 41, 59, 0.6);
+  /* Flow Guardian colors - Gold accent system */
+  --fg-gold: #fca311;
+  --fg-gold-dim: rgba(252, 163, 17, 0.6);
+  --fg-gold-glow: rgba(252, 163, 17, 0.4);
+  --fg-gold-subtle: rgba(252, 163, 17, 0.1);
+  --fg-surface: rgba(20, 33, 61, 0.8);
+  --fg-surface-elevated: rgba(20, 33, 61, 0.95);
 
-  /* Chart colors */
-  --chart-1: #a855f7;
-  --chart-2: #06b6d4;
-  --chart-3: #10b981;
-  --chart-4: #f59e0b;
-  --chart-5: #ef4444;
+  /* Chart colors - Gold-centric with complementary tones */
+  --chart-1: #fca311;
+  --chart-2: #e5e5e5;
+  --chart-3: #14213d;
+  --chart-4: #d4a017;
+  --chart-5: #ffffff;
 }
 
 .dark {
-  --background: #030712;
-  --foreground: #f8fafc;
-  --card: #0f172a;
-  --card-foreground: #f8fafc;
-  --popover: #0f172a;
-  --popover-foreground: #f8fafc;
-  --primary: #a855f7;
-  --primary-foreground: #ffffff;
-  --secondary: #1e293b;
-  --secondary-foreground: #e2e8f0;
-  --muted: #1e293b;
-  --muted-foreground: #94a3b8;
-  --accent: #6366f1;
-  --accent-foreground: #ffffff;
+  --background: #000000;
+  --foreground: #ffffff;
+  --card: #14213d;
+  --card-foreground: #ffffff;
+  --popover: #14213d;
+  --popover-foreground: #ffffff;
+  --primary: #fca311;
+  --primary-foreground: #000000;
+  --secondary: #14213d;
+  --secondary-foreground: #e5e5e5;
+  --muted: #14213d;
+  --muted-foreground: #e5e5e5;
+  --accent: #fca311;
+  --accent-foreground: #000000;
   --destructive: #ef4444;
-  --border: rgba(148, 163, 184, 0.1);
-  --input: rgba(148, 163, 184, 0.15);
-  --ring: #a855f7;
+  --border: rgba(252, 163, 17, 0.15);
+  --input: rgba(252, 163, 17, 0.1);
+  --ring: #fca311;
 }
 
 @layer base {
@@ -122,10 +130,9 @@
   body {
     @apply bg-background text-foreground;
     background:
-      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(168, 85, 247, 0.15), transparent),
-      radial-gradient(ellipse 60% 40% at 100% 0%, rgba(99, 102, 241, 0.1), transparent),
-      radial-gradient(ellipse 50% 30% at 0% 100%, rgba(6, 182, 212, 0.08), transparent),
-      #030712;
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(252, 163, 17, 0.06), transparent),
+      radial-gradient(ellipse 40% 30% at 100% 100%, rgba(20, 33, 61, 0.5), transparent),
+      #000000;
     min-height: 100vh;
   }
 }
@@ -141,60 +148,60 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.2);
+  background: rgba(252, 163, 17, 0.2);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.3);
+  background: rgba(252, 163, 17, 0.4);
 }
 
-/* Aurora glow effect */
-.aurora-glow {
+/* Gold glow effect */
+.gold-glow {
   position: relative;
 }
 
-.aurora-glow::before {
+.gold-glow::before {
   content: '';
   position: absolute;
   inset: -1px;
   border-radius: inherit;
   padding: 1px;
-  background: linear-gradient(135deg, var(--fg-aurora-1), var(--fg-aurora-2), var(--fg-aurora-3));
+  background: linear-gradient(135deg, #fca311, #d4a017);
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
-  opacity: 0.5;
+  opacity: 0.4;
   transition: opacity 0.3s ease;
 }
 
-.aurora-glow:hover::before {
+.gold-glow:hover::before {
   opacity: 1;
 }
 
-/* Glass morphism card */
+/* Glass morphism card - Prussian blue */
 .glass-card {
-  background: rgba(15, 23, 42, 0.6);
+  background: rgba(20, 33, 61, 0.8);
   backdrop-filter: blur(20px);
-  border: 1px solid rgba(148, 163, 184, 0.1);
+  border: 1px solid rgba(252, 163, 17, 0.1);
 }
 
-/* Gradient text */
+/* Gradient text - Gold accent */
 .gradient-text {
-  background: linear-gradient(135deg, #ffffff 0%, #a855f7 50%, #06b6d4 100%);
+  background: linear-gradient(135deg, #ffffff 0%, #fca311 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-/* Pulse animation for live indicators */
+/* Pulse animation for live indicators - Gold */
 @keyframes pulse-glow {
   0%, 100% {
-    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+    box-shadow: 0 0 0 0 rgba(252, 163, 17, 0.4);
   }
   50% {
-    box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
+    box-shadow: 0 0 0 8px rgba(252, 163, 17, 0);
   }
 }
 
@@ -202,7 +209,7 @@
   animation: pulse-glow 2s ease-in-out infinite;
 }
 
-/* Shimmer loading effect */
+/* Shimmer loading effect - Prussian blue tones */
 @keyframes shimmer {
   0% {
     background-position: -200% 0;
@@ -215,9 +222,9 @@
 .shimmer {
   background: linear-gradient(
     90deg,
-    rgba(30, 41, 59, 0.3) 25%,
-    rgba(51, 65, 85, 0.5) 50%,
-    rgba(30, 41, 59, 0.3) 75%
+    rgba(20, 33, 61, 0.4) 25%,
+    rgba(40, 60, 90, 0.6) 50%,
+    rgba(20, 33, 61, 0.4) 75%
   );
   background-size: 200% 100%;
   animation: shimmer 1.5s ease-in-out infinite;
@@ -259,8 +266,8 @@
 }
 
 .react-flow__controls {
-  background: rgba(15, 23, 42, 0.9) !important;
-  border: 1px solid rgba(148, 163, 184, 0.1) !important;
+  background: rgba(20, 33, 61, 0.95) !important;
+  border: 1px solid rgba(252, 163, 17, 0.15) !important;
   border-radius: 12px !important;
   overflow: hidden;
 }
@@ -268,14 +275,14 @@
 .react-flow__controls-button {
   background: transparent !important;
   border: none !important;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1) !important;
-  color: #94a3b8 !important;
+  border-bottom: 1px solid rgba(252, 163, 17, 0.1) !important;
+  color: #e5e5e5 !important;
   transition: all 0.2s ease !important;
 }
 
 .react-flow__controls-button:hover {
-  background: rgba(168, 85, 247, 0.1) !important;
-  color: #a855f7 !important;
+  background: rgba(252, 163, 17, 0.1) !important;
+  color: #fca311 !important;
 }
 
 .react-flow__controls-button:last-child {
@@ -285,7 +292,7 @@
 /* Recharts overrides */
 .recharts-cartesian-grid-horizontal line,
 .recharts-cartesian-grid-vertical line {
-  stroke: rgba(148, 163, 184, 0.08) !important;
+  stroke: rgba(252, 163, 17, 0.08) !important;
 }
 
 .recharts-tooltip-wrapper {

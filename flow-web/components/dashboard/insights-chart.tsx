@@ -67,27 +67,28 @@ function generateTagData(learnings: Learning[]) {
     .map(([name, value]) => ({ name, value }));
 }
 
+// Gold-centric color palette
 const COLORS = [
-  '#a855f7', // purple
-  '#06b6d4', // cyan
-  '#10b981', // emerald
-  '#f59e0b', // amber
-  '#ec4899', // pink
-  '#6366f1', // indigo
+  '#fca311', // gold
+  '#d4a017', // darker gold
+  '#e5e5e5', // alabaster
+  '#ffffff', // white
+  '#fca311cc', // gold 80%
+  '#d4a017cc', // darker gold 80%
 ];
 
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     return (
-      <div className="bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-xl p-3 shadow-xl">
-        <p className="text-slate-400 text-xs mb-2">{label}</p>
+      <div className="bg-[#14213d]/95 backdrop-blur-xl border border-[#fca311]/20 rounded-xl p-3 shadow-xl">
+        <p className="text-[#e5e5e5]/60 text-xs mb-2">{label}</p>
         {payload.map((entry: any, index: number) => (
           <div key={index} className="flex items-center gap-2 text-sm">
             <div
               className="w-2.5 h-2.5 rounded-full"
               style={{ backgroundColor: entry.color }}
             />
-            <span className="text-slate-300">{entry.name}:</span>
+            <span className="text-[#e5e5e5]">{entry.name}:</span>
             <span className="text-white font-medium">{entry.value}</span>
           </div>
         ))}
@@ -127,7 +128,7 @@ export function ActivityChart() {
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-6">
+      <div className="rounded-2xl border border-[#fca311]/10 bg-[#14213d]/80 backdrop-blur-xl p-6">
         <div className="h-6 w-40 shimmer rounded mb-4" />
         <div className="h-64 shimmer rounded-xl" />
       </div>
@@ -138,10 +139,10 @@ export function ActivityChart() {
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-6"
+      className="rounded-2xl border border-[#fca311]/10 hover:border-[#fca311]/20 bg-[#14213d]/80 backdrop-blur-xl p-6 transition-colors duration-300"
     >
       <div className="flex items-center gap-2 mb-6">
-        <TrendingUp className="w-5 h-5 text-indigo-400" />
+        <TrendingUp className="w-5 h-5 text-[#fca311]" />
         <h3 className="text-lg font-semibold text-white">Activity (7 days)</h3>
       </div>
       <div className="h-64">
@@ -149,33 +150,35 @@ export function ActivityChart() {
           <AreaChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
             <defs>
               <linearGradient id="colorSessions" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4} />
-                <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                <stop offset="5%" stopColor="#fca311" stopOpacity={0.4} />
+                <stop offset="95%" stopColor="#fca311" stopOpacity={0} />
               </linearGradient>
               <linearGradient id="colorLearnings" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
-                <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                <stop offset="5%" stopColor="#e5e5e5" stopOpacity={0.3} />
+                <stop offset="95%" stopColor="#e5e5e5" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.08)" vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(252, 163, 17, 0.08)" vertical={false} />
             <XAxis
               dataKey="date"
-              stroke="#64748b"
+              stroke="#e5e5e5"
               fontSize={12}
               tickLine={false}
               axisLine={false}
+              opacity={0.5}
             />
             <YAxis
-              stroke="#64748b"
+              stroke="#e5e5e5"
               fontSize={12}
               tickLine={false}
               axisLine={false}
+              opacity={0.5}
             />
             <Tooltip content={<CustomTooltip />} />
             <Area
               type="monotone"
               dataKey="sessions"
-              stroke="#6366f1"
+              stroke="#fca311"
               strokeWidth={2}
               fillOpacity={1}
               fill="url(#colorSessions)"
@@ -184,7 +187,7 @@ export function ActivityChart() {
             <Area
               type="monotone"
               dataKey="learnings"
-              stroke="#10b981"
+              stroke="#e5e5e5"
               strokeWidth={2}
               fillOpacity={1}
               fill="url(#colorLearnings)"
@@ -195,12 +198,12 @@ export function ActivityChart() {
       </div>
       <div className="flex justify-center gap-8 mt-4">
         <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500" />
-          <span className="text-sm text-slate-400">Sessions</span>
+          <div className="w-3 h-3 rounded-full bg-[#fca311]" />
+          <span className="text-sm text-[#e5e5e5]/70">Sessions</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded-full bg-gradient-to-r from-cyan-500 to-emerald-500" />
-          <span className="text-sm text-slate-400">Learnings</span>
+          <div className="w-3 h-3 rounded-full bg-[#e5e5e5]" />
+          <span className="text-sm text-[#e5e5e5]/70">Learnings</span>
         </div>
       </div>
     </motion.div>
@@ -232,7 +235,7 @@ export function TagDistributionChart() {
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-6">
+      <div className="rounded-2xl border border-[#fca311]/10 bg-[#14213d]/80 backdrop-blur-xl p-6">
         <div className="h-6 w-40 shimmer rounded mb-4" />
         <div className="h-48 shimmer rounded-xl" />
       </div>
@@ -244,11 +247,11 @@ export function TagDistributionChart() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-6 h-[340px] flex flex-col items-center justify-center"
+        className="rounded-2xl border border-[#fca311]/10 bg-[#14213d]/80 backdrop-blur-xl p-6 h-[340px] flex flex-col items-center justify-center"
       >
-        <PieChartIcon className="w-12 h-12 text-slate-700 mb-3" />
-        <p className="text-slate-500 font-medium">No tag data available</p>
-        <p className="text-slate-600 text-sm mt-1">Tags will appear as you add learnings</p>
+        <PieChartIcon className="w-12 h-12 text-[#e5e5e5]/20 mb-3" />
+        <p className="text-[#e5e5e5]/60 font-medium">No tag data available</p>
+        <p className="text-[#e5e5e5]/40 text-sm mt-1">Tags will appear as you add learnings</p>
       </motion.div>
     );
   }
@@ -258,10 +261,10 @@ export function TagDistributionChart() {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.1 }}
-      className="rounded-2xl border border-white/[0.08] bg-slate-900/60 backdrop-blur-xl p-6"
+      className="rounded-2xl border border-[#fca311]/10 hover:border-[#fca311]/20 bg-[#14213d]/80 backdrop-blur-xl p-6 transition-colors duration-300"
     >
       <div className="flex items-center gap-2 mb-6">
-        <PieChartIcon className="w-5 h-5 text-purple-400" />
+        <PieChartIcon className="w-5 h-5 text-[#fca311]" />
         <h3 className="text-lg font-semibold text-white">Tag Distribution</h3>
       </div>
       <div className="h-48">
@@ -275,7 +278,7 @@ export function TagDistributionChart() {
               outerRadius={80}
               paddingAngle={3}
               dataKey="value"
-              stroke="rgba(15, 23, 42, 0.8)"
+              stroke="#000000"
               strokeWidth={2}
             >
               {data.map((_, index) => (
@@ -290,9 +293,9 @@ export function TagDistributionChart() {
               content={({ active, payload }) => {
                 if (active && payload && payload.length) {
                   return (
-                    <div className="bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-xl p-3 shadow-xl">
+                    <div className="bg-[#14213d]/95 backdrop-blur-xl border border-[#fca311]/20 rounded-xl p-3 shadow-xl">
                       <div className="flex items-center gap-2">
-                        <span className="text-slate-300">#{payload[0].name}:</span>
+                        <span className="text-[#e5e5e5]">#{payload[0].name}:</span>
                         <span className="text-white font-medium">{payload[0].value}</span>
                       </div>
                     </div>
@@ -311,7 +314,7 @@ export function TagDistributionChart() {
               className="w-2.5 h-2.5 rounded-full"
               style={{ backgroundColor: COLORS[index % COLORS.length] }}
             />
-            <span className="text-xs text-slate-400">#{entry.name}</span>
+            <span className="text-xs text-[#e5e5e5]/70">#{entry.name}</span>
           </div>
         ))}
       </div>
