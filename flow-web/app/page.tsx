@@ -1,0 +1,121 @@
+"use client";
+
+import { useState } from "react";
+import { ChatInterface } from "@/components/chat/chat-interface";
+import type { Message } from "@/components/chat/message-bubble";
+import { UploadModal } from "@/components/upload/upload-modal";
+import { ActivityFeed } from "@/components/activity/activity-feed";
+import { Button } from "@/components/ui/button";
+
+export default function Home() {
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [showActivity, setShowActivity] = useState(true);
+  const sendMessage = async (content: string): Promise<Message> => {
+    // Send to chat API
+    const response = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: [{ role: "user", content }],
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to send message");
+    }
+
+    // Handle streaming response
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+    let fullContent = "";
+
+    if (reader) {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split("\n");
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const data = line.slice(6);
+            if (data === "[DONE]") continue;
+
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.content) {
+                fullContent += parsed.content;
+              }
+            } catch {
+              // Skip invalid JSON
+            }
+          }
+        }
+      }
+    }
+
+    return {
+      id: crypto.randomUUID(),
+      role: "assistant",
+      content: fullContent || "I couldn't find relevant context to answer your question.",
+      timestamp: new Date(),
+    };
+  };
+
+  return (
+    <div className="h-screen flex flex-col bg-background overflow-hidden">
+      <header className="flex-shrink-0 border-b px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-semibold">Flow Guardian</h1>
+            <p className="text-sm text-muted-foreground">Team memory assistant</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowActivity(!showActivity)}
+            >
+              {showActivity ? "Hide Activity" : "Show Activity"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsUploadOpen(true)}
+            >
+              + Add Context
+            </Button>
+          </div>
+        </div>
+      </header>
+
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        {/* Main Chat Area */}
+        <main className="flex-1 flex flex-col min-h-0 p-4">
+          <div className="flex-1 min-h-0 max-w-4xl w-full mx-auto">
+            <ChatInterface
+              title="Ask about your team's work"
+              sendMessage={sendMessage}
+              height="h-full"
+              showHeader={false}
+            />
+          </div>
+        </main>
+
+        {/* Activity Sidebar */}
+        {showActivity && (
+          <aside className="w-80 flex-shrink-0 border-l bg-muted/30 hidden lg:block overflow-hidden">
+            <ActivityFeed className="h-full" />
+          </aside>
+        )}
+      </div>
+
+      <UploadModal
+        isOpen={isUploadOpen}
+        onClose={() => setIsUploadOpen(false)}
+        onUploadComplete={() => setIsUploadOpen(false)}
+      />
+    </div>
+  );
+}

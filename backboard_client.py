@@ -139,6 +139,7 @@ async def create_assistant(name: str, llm_provider: str = "cerebras") -> str:
             "llm_provider": llm_provider,
             "llm_model_name": "gemini-2.5-flash",
             "tools": []
+            "description": name,
         }
     )
     return response.json()["assistant_id"]
