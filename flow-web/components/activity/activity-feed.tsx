@@ -26,30 +26,101 @@ function formatTimeAgo(timestamp: string): string {
 }
 
 function SessionCard({ session }: { session: Session }) {
+  const [expanded, setExpanded] = React.useState(false);
+
   return (
-    <div className="p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
+    <div
+      className={cn(
+        "p-3 rounded-lg border bg-card transition-all cursor-pointer",
+        expanded ? "bg-accent/30 border-primary/30" : "hover:bg-accent/50"
+      )}
+      onClick={() => setExpanded(!expanded)}
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate">{session.summary}</p>
-          <div className="flex items-center gap-2 mt-1">
-            <Badge variant="outline" className="text-xs">
+          <p className={cn(
+            "text-sm font-medium leading-relaxed",
+            !expanded && "line-clamp-2"
+          )}>
+            {session.summary}
+          </p>
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
+            <Badge variant="outline" className="text-xs shrink-0">
               {session.branch}
             </Badge>
             <span className="text-xs text-muted-foreground">
               {formatTimeAgo(session.timestamp)}
             </span>
+            <span className={cn(
+              "text-xs ml-auto px-2 py-0.5 rounded-full shrink-0 transition-colors",
+              expanded ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
+            )}>
+              {expanded ? "▲ Collapse" : "▼ Expand"}
+            </span>
           </div>
         </div>
       </div>
 
-      {session.context?.blockers && session.context.blockers.length > 0 && (
+      {/* Expanded Details */}
+      {expanded && (
+        <div className="mt-3 pt-3 border-t space-y-3">
+          {/* Decisions */}
+          {session.context?.decisions && session.context.decisions.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-green-400 mb-1">✓ Decisions Made</p>
+              <ul className="text-sm space-y-1 pl-1">
+                {session.context.decisions.map((decision, i) => (
+                  <li key={i} className="text-muted-foreground">• {decision}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Next Steps */}
+          {session.context?.next_steps && session.context.next_steps.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-blue-400 mb-1">→ Next Steps</p>
+              <ul className="text-sm space-y-1 pl-1">
+                {session.context.next_steps.map((step, i) => (
+                  <li key={i} className="text-muted-foreground">• {step}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Blockers */}
+          {session.context?.blockers && session.context.blockers.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-red-400 mb-1">⚠ Blockers</p>
+              <ul className="text-sm space-y-1 pl-1">
+                {session.context.blockers.map((blocker, i) => (
+                  <li key={i} className="text-muted-foreground">• {blocker}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* No extra context message */}
+          {(!session.context?.decisions?.length && !session.context?.next_steps?.length && !session.context?.blockers?.length) && (
+            <p className="text-xs text-muted-foreground italic">No additional context captured for this session.</p>
+          )}
+
+          {/* Timestamp */}
+          <div className="pt-2 border-t flex justify-between items-center">
+            <p className="text-xs text-muted-foreground">
+              {new Date(session.timestamp).toLocaleString()}
+            </p>
+            <span className="text-xs text-muted-foreground">ID: {session.id.slice(-8)}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Collapsed Blockers Indicator */}
+      {!expanded && session.context?.blockers && session.context.blockers.length > 0 && (
         <div className="mt-2 pt-2 border-t">
-          <p className="text-xs text-destructive font-medium">Blockers:</p>
-          <ul className="text-xs text-muted-foreground mt-1">
-            {session.context.blockers.map((blocker, i) => (
-              <li key={i}>- {blocker}</li>
-            ))}
-          </ul>
+          <p className="text-xs text-destructive font-medium">
+            {session.context.blockers.length} blocker{session.context.blockers.length > 1 ? "s" : ""}
+          </p>
         </div>
       )}
     </div>
@@ -57,11 +128,23 @@ function SessionCard({ session }: { session: Session }) {
 }
 
 function LearningCard({ learning }: { learning: Learning }) {
+  const [expanded, setExpanded] = React.useState(false);
   const content = learning.insight || learning.text || "";
 
   return (
-    <div className="p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
-      <p className="text-sm">{content}</p>
+    <div
+      className={cn(
+        "p-3 rounded-lg border bg-card transition-all cursor-pointer",
+        expanded ? "bg-accent/30" : "hover:bg-accent/50"
+      )}
+      onClick={() => setExpanded(!expanded)}
+    >
+      <p className={cn(
+        "text-sm leading-relaxed",
+        !expanded && "line-clamp-2"
+      )}>
+        {content}
+      </p>
       <div className="flex items-center gap-2 mt-2 flex-wrap">
         {learning.tags.slice(0, 3).map((tag) => (
           <Badge key={tag} variant="secondary" className="text-xs">
@@ -69,7 +152,7 @@ function LearningCard({ learning }: { learning: Learning }) {
           </Badge>
         ))}
         {learning.team && (
-          <Badge variant="default" className="text-xs">
+          <Badge variant="default" className="text-xs bg-blue-500">
             team
           </Badge>
         )}
@@ -77,6 +160,11 @@ function LearningCard({ learning }: { learning: Learning }) {
           {formatTimeAgo(learning.timestamp)}
         </span>
       </div>
+      {expanded && learning.author && (
+        <p className="text-xs text-muted-foreground mt-2 pt-2 border-t">
+          By: {learning.author}
+        </p>
+      )}
     </div>
   );
 }

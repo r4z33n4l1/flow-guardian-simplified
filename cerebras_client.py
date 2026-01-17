@@ -103,6 +103,26 @@ def complete(
             raise CerebrasError(f"Cerebras API error: {e}")
 
 
+async def quick_answer(prompt: str, system: Optional[str] = None) -> str:
+    """
+    Async wrapper for quick completions.
+
+    Args:
+        prompt: The prompt to complete
+        system: Optional system message
+
+    Returns:
+        String response from the model
+    """
+    import asyncio
+    # Run sync complete in thread pool to make it async
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        None,
+        lambda: complete(prompt, system=system, max_tokens=2000)
+    )
+
+
 def analyze_session_context(
     branch: str,
     files: list[str],

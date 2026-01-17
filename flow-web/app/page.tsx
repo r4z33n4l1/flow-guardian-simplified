@@ -105,7 +105,7 @@ export default function Home() {
 
         {/* Activity Sidebar */}
         {showActivity && (
-          <aside className="w-80 flex-shrink-0 border-l bg-muted/30 hidden lg:block overflow-hidden">
+          <aside className="w-96 flex-shrink-0 border-l bg-muted/30 hidden lg:block overflow-hidden">
             <ActivityFeed className="h-full" />
           </aside>
         )}
