@@ -3,7 +3,7 @@
 > Flow Guardian — "Claude forgets. Flow Guardian remembers."
 
 **Last Updated:** 2026-01-17
-**Status:** 🚧 **Phase 2: Core Complete, Polish Remaining**
+**Status:** ✅ **Phase 2: Complete (324 tests passing)**
 
 ---
 
@@ -25,17 +25,17 @@
 | `tldr.py` | ✅ **Fully Implemented** | 340 |
 | `inject.py` | ✅ **Fully Implemented** | 362 |
 | `flow.py` | ✅ **Fully Implemented** | 17 |
-| **TOTAL** | **Phase 1 + Phase 2 Core complete** | **4,355** |
+| **TOTAL** | **Phase 1 + Phase 2 Complete** | **4,355** |
 
+**Test Suite:** 324 passing tests across 15 test files
 **Specifications:** 16 complete spec files in `specs/` directory
 **Dependencies:** Fully specified in `requirements.txt`
-**Reference implementation:** `backboard_client.py` code provided in `docs/HACKATHON_PLAN.md` (lines 154-318)
 
-**Phase 1 (MVP) complete. Now implementing Phase 2: Seamless Context System.**
+**Phase 1 (MVP) and Phase 2 (Seamless Context System) complete.**
 
 ---
 
-## Phase 2: Seamless Context System (CURRENT)
+## Phase 2: Seamless Context System ✅ COMPLETE
 
 > Automatic context injection. When you open Claude Code, it just knows.
 
@@ -136,7 +136,8 @@ tldr.py ──────┘
 - [x] `test_inject.py` — injection generation, formatting, state save (19 tests)
 - [x] `test_setup_command.py` — directory creation, hook scripts, settings (4 tests)
 - [x] End-to-end test: save → close → reopen → context restored (13 tests in test_e2e.py)
-- [ ] Add missing tests for `daemon.py` and `session_parser.py`
+- [x] `test_daemon.py` — logging, state, JSON extraction, insight extraction, daemon control (28 tests)
+- [x] `test_session_parser.py` — session discovery, message parsing, conversation text (23 tests)
 
 ---
 
@@ -441,5 +442,3 @@ flow-guardian/
 ### Test Suite Notes
 - Some tests in `test_git_utils.py`, `test_capture.py`, `test_restore.py` run actual git commands (integration-style)
 - Time-sensitive tests in `test_restore.py` use `datetime.now()` — could be flaky during DST transitions
-
-### Missing from Tests
