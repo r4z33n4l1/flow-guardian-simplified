@@ -10,16 +10,26 @@ export async function GET(request: NextRequest) {
 
   const stream = new ReadableStream({
     async start(controller) {
+      let isClosed = false;
+
+      // Helper to safely enqueue data
+      const safeEnqueue = (data: string) => {
+        if (!isClosed) {
+          try {
+            controller.enqueue(encoder.encode(data));
+          } catch (e) {
+            // Controller may have been closed
+            isClosed = true;
+          }
+        }
+      };
+
       // Send initial state
       try {
         const statusRes = await fetch(`${FLOW_GUARDIAN_URL}/status`);
         if (statusRes.ok) {
           const status = await statusRes.json();
-          controller.enqueue(
-            encoder.encode(
-              `data: ${JSON.stringify({ type: "init", status })}\n\n`
-            )
-          );
+          safeEnqueue(`data: ${JSON.stringify({ type: "init", status })}\n\n`);
         }
       } catch (error) {
         console.error("Failed to fetch initial status:", error);
@@ -27,17 +37,20 @@ export async function GET(request: NextRequest) {
 
       // Poll for updates every 5 seconds
       const interval = setInterval(async () => {
+        if (isClosed) {
+          clearInterval(interval);
+          return;
+        }
+
         try {
           // Check for recent sessions
           const sessionsRes = await fetch(
             `${FLOW_GUARDIAN_URL}/sessions?limit=5`
           );
-          if (sessionsRes.ok) {
+          if (sessionsRes.ok && !isClosed) {
             const data = await sessionsRes.json();
-            controller.enqueue(
-              encoder.encode(
-                `data: ${JSON.stringify({ type: "sessions", sessions: data.sessions })}\n\n`
-              )
+            safeEnqueue(
+              `data: ${JSON.stringify({ type: "sessions", sessions: data.sessions })}\n\n`
             );
           }
 
@@ -45,35 +58,36 @@ export async function GET(request: NextRequest) {
           const learningsRes = await fetch(
             `${FLOW_GUARDIAN_URL}/learnings?limit=5`
           );
-          if (learningsRes.ok) {
+          if (learningsRes.ok && !isClosed) {
             const data = await learningsRes.json();
-            controller.enqueue(
-              encoder.encode(
-                `data: ${JSON.stringify({ type: "learnings", learnings: data.learnings })}\n\n`
-              )
+            safeEnqueue(
+              `data: ${JSON.stringify({ type: "learnings", learnings: data.learnings })}\n\n`
             );
           }
 
           // Send heartbeat
-          controller.enqueue(
-            encoder.encode(
-              `data: ${JSON.stringify({ type: "heartbeat", timestamp: new Date().toISOString() })}\n\n`
-            )
+          safeEnqueue(
+            `data: ${JSON.stringify({ type: "heartbeat", timestamp: new Date().toISOString() })}\n\n`
           );
         } catch (error) {
-          console.error("Activity stream error:", error);
-          controller.enqueue(
-            encoder.encode(
+          if (!isClosed) {
+            console.error("Activity stream error:", error);
+            safeEnqueue(
               `data: ${JSON.stringify({ type: "error", message: "Failed to fetch updates" })}\n\n`
-            )
-          );
+            );
+          }
         }
       }, 5000);
 
       // Cleanup on abort
       request.signal.addEventListener("abort", () => {
+        isClosed = true;
         clearInterval(interval);
-        controller.close();
+        try {
+          controller.close();
+        } catch (e) {
+          // Already closed
+        }
       });
     },
   });
