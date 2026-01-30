@@ -2,6 +2,8 @@
 
 Handles local file-based storage as a fallback when Backboard.io is unavailable.
 All data is stored in ~/.flow-guardian/ directory.
+
+Also supports dual-write to the vector store for semantic search when available.
 """
 import json
 import os
@@ -11,6 +13,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+# Lazy-loaded vector store components
+_vector_store = None
+_embeddings = None
+_vector_write_enabled = None
+
 
 # ============ CONFIGURATION ============
 
@@ -19,6 +26,93 @@ SESSIONS_DIR = STORAGE_DIR / "sessions"
 CONFIG_FILE = STORAGE_DIR / "config.json"
 SESSIONS_INDEX = SESSIONS_DIR / "index.json"
 LEARNINGS_FILE = STORAGE_DIR / "learnings.json"
+
+
+# ============ VECTOR STORE HELPERS ============
+
+def _is_vector_write_enabled() -> bool:
+    """Check if vector store dual-write is enabled."""
+    global _vector_write_enabled
+    if _vector_write_enabled is None:
+        # Enable if USE_VECTOR_STORE=true or if embeddings are available
+        env_val = os.environ.get("USE_VECTOR_STORE", "auto").lower()
+        if env_val in ("true", "1", "yes"):
+            _vector_write_enabled = True
+        elif env_val in ("false", "0", "no"):
+            _vector_write_enabled = False
+        else:  # auto
+            try:
+                import embeddings
+                _vector_write_enabled = embeddings.is_available()
+            except ImportError:
+                _vector_write_enabled = False
+    return _vector_write_enabled
+
+
+def _get_vector_store():
+    """Get the vector store instance (lazy load)."""
+    global _vector_store
+    if _vector_store is None:
+        try:
+            import vector_storage
+            _vector_store = vector_storage.get_store()
+        except ImportError:
+            _vector_store = False  # Mark as unavailable
+    return _vector_store if _vector_store else None
+
+
+def _get_embedding(text: str) -> list[float]:
+    """Generate embedding for text (lazy load)."""
+    global _embeddings
+    if _embeddings is None:
+        try:
+            import embeddings as emb_module
+            _embeddings = emb_module
+        except ImportError:
+            return []
+    try:
+        return _embeddings.get_embedding(text)
+    except Exception:
+        return []
+
+
+def _store_to_vector(
+    content: str,
+    content_type: str,
+    metadata: dict = None,
+    memory_id: str = None,
+    namespace: str = "personal",
+) -> bool:
+    """
+    Store content to the vector store if available.
+
+    Returns True if stored, False if not available or failed.
+    """
+    if not _is_vector_write_enabled():
+        return False
+
+    store = _get_vector_store()
+    if store is None:
+        return False
+
+    try:
+        embedding = _get_embedding(content)
+        if not embedding:
+            # Store without embedding (will use keyword search only)
+            embedding = [0.0] * 768  # Zero vector
+
+        store.store(
+            content=content,
+            embedding=embedding,
+            namespace=namespace,
+            content_type=content_type,
+            metadata=metadata,
+            memory_id=memory_id,
+        )
+        return True
+    except Exception as e:
+        print(f"Warning: Failed to store to vector store: {e}")
+        return False
 
 
 # ============ INITIALIZATION ============
@@ -104,6 +198,8 @@ def save_session(session: dict) -> str:
     """
     Save a session checkpoint to local storage.
 
+    Also stores to vector store if available for semantic search.
+
     Args:
         session: Session data dictionary containing context, git state, etc.
 
@@ -132,15 +228,44 @@ def save_session(session: dict) -> str:
 
     # Add to index (remove old entry if exists)
     index = [s for s in index if s.get("id") != session_id]
+    context = session.get("context", {})
+    git = session.get("git", {})
+    summary = context.get("summary") or session.get("summary", "")
+    branch = git.get("branch") or session.get("branch", "unknown")
+
     index.insert(0, {
         "id": session_id,
         "timestamp": session["timestamp"],
-        "branch": session.get("git", {}).get("branch") or session.get("branch", "unknown"),
-        "summary": session.get("context", {}).get("summary") or session.get("summary", ""),
+        "branch": branch,
+        "summary": summary,
         "file": f"{session_id}.json"
     })
 
     _atomic_write(SESSIONS_INDEX, index)
+
+    # Dual-write to vector store for semantic search
+    if _is_vector_write_enabled():
+        # Build content string for embedding
+        content_parts = [f"**Session:** {summary}"]
+        content_parts.append(f"Branch: {branch}")
+        if context.get("decisions"):
+            content_parts.append(f"Decisions: {', '.join(context['decisions'])}")
+        if context.get("next_steps"):
+            content_parts.append(f"Next steps: {', '.join(context['next_steps'])}")
+        if context.get("blockers"):
+            content_parts.append(f"Blockers: {', '.join(context['blockers'])}")
+
+        _store_to_vector(
+            content="\n".join(content_parts),
+            content_type="session",
+            metadata={
+                "session_id": session_id,
+                "branch": branch,
+                "files": context.get("files", []),
+                "tags": session.get("metadata", {}).get("tags", []),
+            },
+            memory_id=session_id,
+        )
 
     return session_id
 
@@ -230,6 +355,8 @@ def save_learning(learning: dict) -> str:
     """
     Save a learning to local storage.
 
+    Also stores to vector store if available for semantic search.
+
     Args:
         learning: Learning data with text, tags, etc.
 
@@ -256,6 +383,26 @@ def save_learning(learning: dict) -> str:
     learnings.insert(0, learning)
 
     _atomic_write(LEARNINGS_FILE, learnings)
+
+    # Dual-write to vector store for semantic search
+    if _is_vector_write_enabled():
+        insight = learning.get("insight") or learning.get("text", "")
+        tags = learning.get("tags", [])
+        is_team = learning.get("team", False) or learning.get("shared", False)
+
+        content = f"**Learning:** {insight}"
+
+        _store_to_vector(
+            content=content,
+            content_type="learning",
+            metadata={
+                "tags": tags,
+                "author": learning.get("author"),
+                "shared": is_team,
+            },
+            memory_id=learning_id,
+            namespace="team" if is_team else "personal",
+        )
 
     return learning_id
 
