@@ -46,7 +46,7 @@ class RecallResponse(BaseModel):
     success: bool
     query: str
     results: list[dict] = []
-    source: str = Field(..., description="'backboard' or 'local'")
+    source: str = Field(..., description="'vector', 'backboard', or 'local'")
 
 
 # ============ LEARN ============
@@ -66,6 +66,7 @@ class LearnResponse(BaseModel):
     tags: list[str] = []
     scope: str = Field(..., description="'personal' or 'team'")
     stored_backboard: bool
+    stored_vector: bool = False
 
 
 # ============ TEAM ============

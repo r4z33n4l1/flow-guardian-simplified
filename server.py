@@ -68,6 +68,7 @@ class FlowService:
         self._backboard = None
         self._cerebras = None
         self._memory = None
+        self._local_memory = None
 
     @property
     def backboard(self):
@@ -89,6 +90,42 @@ class FlowService:
             import memory
             self._memory = memory
         return self._memory
+
+    @property
+    def local_memory(self):
+        """Lazy-load the local memory service (Backboard replacement)."""
+        if self._local_memory is None:
+            try:
+                import local_memory
+                self._local_memory = local_memory.get_service()
+            except ImportError:
+                self._local_memory = None
+        return self._local_memory
+
+    def local_memory_available(self) -> bool:
+        """Check if local memory (vector search) is available."""
+        if self.local_memory is None:
+            return False
+        return self.local_memory.is_available()
+
+    def use_local_memory(self) -> bool:
+        """
+        Determine whether to use local memory instead of Backboard.
+
+        Returns True if:
+        - USE_LOCAL_MEMORY=true is set, OR
+        - Local memory is available AND Backboard is not configured
+        """
+        # Explicit preference via environment variable
+        use_local = os.environ.get("USE_LOCAL_MEMORY", "").lower() in ("true", "1", "yes")
+        if use_local:
+            return self.local_memory_available()
+
+        # Default: use local if available and Backboard not configured
+        if not self.backboard_available() and self.local_memory_available():
+            return True
+
+        return False
 
     def backboard_available(self) -> bool:
         return bool(os.environ.get("BACKBOARD_API_KEY"))
@@ -120,15 +157,28 @@ class FlowService:
             "git": git_info,
         }
 
-        # Save locally as session
-        self.memory.save_session({
+        session_data = {
             "context": context,
             "git": git_info,
             "summary": summary,
-        })
+        }
 
-        # Save to Backboard if available
-        if self.backboard_available():
+        # Save locally as session (JSON)
+        self.memory.save_session(session_data)
+
+        # Store to local vector memory if available
+        vector_stored = False
+        if self.local_memory_available():
+            try:
+                await self.local_memory.store_session(session_data)
+                vector_stored = True
+                log("Session stored to local vector memory", "DEBUG")
+            except Exception as e:
+                log(f"Failed to store session to vector memory: {e}", "WARN")
+
+        # Save to Backboard if available (and not using local memory exclusively)
+        cloud_stored = False
+        if self.backboard_available() and not self.use_local_memory():
             thread_id = os.environ.get("BACKBOARD_PERSONAL_THREAD_ID")
             if thread_id:
                 content = self._format_context_for_storage(context)
@@ -136,11 +186,13 @@ class FlowService:
                     "type": "context_capture",
                     "cwd": os.getcwd(),
                 })
+                cloud_stored = True
 
         return {
             "saved": True,
             "local": True,
-            "cloud": self.backboard_available(),
+            "vector": vector_stored,
+            "cloud": cloud_stored,
             "branch": git_info.get("branch") or "unknown",
         }
 
@@ -181,6 +233,42 @@ Example output: ["auth", "jwt", "token", "refresh"]""",
             log(f"Search term extraction failed: {e}", "DEBUG")
         # Fallback: split query into words
         return [w.lower() for w in query.split() if len(w) > 2][:5]
+
+    async def _search_local_vector_memory(self, query: str, search_terms: list[str], limit: int = 10) -> list[dict]:
+        """Search local vector memory if available."""
+        results = []
+        if not self.local_memory_available():
+            return results
+
+        try:
+            # Search with vector similarity
+            vector_results = await self.local_memory.search_raw(
+                query=query,
+                namespace="personal",
+                limit=limit,
+            )
+
+            for r in vector_results:
+                content = r.get("content", "")
+                meta = r.get("metadata", {})
+                score = r.get("score", 0.5) * 10  # Scale to match other scores
+
+                results.append({
+                    "content": content,
+                    "source": "vector",
+                    "timestamp": r.get("created_at"),
+                    "tags": meta.get("tags", []),
+                    "score": score,
+                    "content_type": r.get("content_type", "unknown"),
+                })
+
+            if results:
+                log(f"Found {len(results)} results from local vector memory", "DEBUG")
+
+        except Exception as e:
+            log(f"Local vector search error: {e}", "WARN")
+
+        return results
 
     async def recall_context(self, query: str, local_only: bool = False) -> dict:
         """Search memory for relevant context.
@@ -282,14 +370,27 @@ Example output: ["auth", "jwt", "token", "refresh"]""",
                         "score": 4,  # High score - actually matched query!
                     })
 
+        # Search local vector memory (semantic search)
+        vector_results = await self._search_local_vector_memory(query, search_terms)
+        for vr in vector_results:
+            # Deduplicate with already found results
+            content_preview = vr.get("content", "")[:100]
+            is_duplicate = any(
+                content_preview in r.get("content", "")[:100]
+                for r in results
+            )
+            if not is_duplicate:
+                results.append(vr)
+
         # Search Backboard when:
         # 1. local_only=False (frontend explicitly requested full search)
-        # 2. OR local results are insufficient (score < 3)
-        # When frontend passes local_only=False, it already determined local is insufficient
+        # 2. AND not using local memory exclusively
+        # 3. AND local results are insufficient (score < 3)
         local_has_good_results = any(r.get("score", 0) >= 3 for r in results)
+        use_local = self.use_local_memory()
 
-        # Always query Backboard when local_only=False - the frontend already did the intelligence check
-        if not local_only:
+        # Query Backboard when local_only=False and not using local memory exclusively
+        if not local_only and not use_local:
             if not self.backboard_available():
                 log("Backboard not available (BACKBOARD_API_KEY not set)", "DEBUG")
             else:
@@ -379,14 +480,25 @@ Example output: ["auth", "jwt", "token", "refresh"]""",
             "shared": share_with_team,
         }
 
-        # Save locally
+        # Save locally (JSON)
         self.memory.save_learning(learning)
 
-        # Save to Backboard
+        # Store to local vector memory if available
+        vector_stored = False
+        if self.local_memory_available():
+            try:
+                await self.local_memory.store_learning(insight, tags)
+                vector_stored = True
+                log("Learning stored to local vector memory", "DEBUG")
+            except Exception as e:
+                log(f"Failed to store learning to vector memory: {e}", "WARN")
+
+        # Save to Backboard (if not using local memory exclusively)
         stored_personal = False
         stored_team = False
+        use_local = self.use_local_memory()
 
-        if self.backboard_available():
+        if self.backboard_available() and not use_local:
             thread_id = os.environ.get("BACKBOARD_PERSONAL_THREAD_ID")
             if thread_id:
                 tag_str = " ".join(f"#{t}" for t in (tags or []))
@@ -406,8 +518,20 @@ Example output: ["auth", "jwt", "token", "refresh"]""",
                     })
                     stored_team = True
 
+        # Store team learning to local vector memory
+        if share_with_team and self.local_memory_available():
+            try:
+                await self.local_memory.store_team_learning(
+                    text=insight,
+                    author=os.environ.get("FLOW_GUARDIAN_USER", "unknown"),
+                    tags=tags,
+                )
+            except Exception as e:
+                log(f"Failed to store team learning to vector memory: {e}", "WARN")
+
         return {
             "stored": True,
+            "vector": vector_stored,
             "personal": stored_personal,
             "team": stored_team,
         }
@@ -415,27 +539,48 @@ Example output: ["auth", "jwt", "token", "refresh"]""",
     # ---- Team ----
     async def query_team(self, query: str) -> dict:
         """Search team knowledge base."""
-        if not self.team_available():
-            return {
-                "available": False,
-                "results": [],
-                "message": "Team knowledge not configured",
-            }
+        results = []
 
-        team_thread = os.environ.get("BACKBOARD_TEAM_THREAD_ID")
-        try:
-            response = await self.backboard.query_team_memory(team_thread, query)
+        # Try local vector memory first if using local memory
+        if self.use_local_memory() and self.local_memory_available():
+            try:
+                response = await self.local_memory.query_team(query)
+                if response and "No relevant context found" not in response:
+                    results.append({"content": response, "source": "local-team"})
+            except Exception as e:
+                log(f"Local team query error: {e}", "WARN")
+
+        # Fall back to or augment with Backboard team memory
+        if not results and self.team_available():
+            team_thread = os.environ.get("BACKBOARD_TEAM_THREAD_ID")
+            try:
+                response = await self.backboard.query_team_memory(team_thread, query)
+                if response:
+                    results.append({"content": response, "source": "team"})
+            except Exception as e:
+                log(f"Backboard team query error: {e}", "WARN")
+
+        if not results:
+            # Check if any team capability is available
+            has_team = self.team_available() or self.local_memory_available()
+            if not has_team:
+                return {
+                    "available": False,
+                    "results": [],
+                    "message": "Team knowledge not configured",
+                }
             return {
                 "available": True,
                 "query": query,
-                "results": [{"content": response, "source": "team"}] if response else [],
-            }
-        except Exception as e:
-            return {
-                "available": True,
-                "error": str(e),
                 "results": [],
+                "message": "No team knowledge found for this query",
             }
+
+        return {
+            "available": True,
+            "query": query,
+            "results": results,
+        }
 
     # ---- Status ----
     async def get_status(self) -> dict:
@@ -443,13 +588,24 @@ Example output: ["auth", "jwt", "token", "refresh"]""",
         # Check last session
         last_session = self.memory.get_latest_session()
 
+        # Get local memory stats if available
+        local_memory_stats = None
+        if self.local_memory_available():
+            try:
+                local_memory_stats = self.local_memory.get_stats()
+            except Exception as e:
+                log(f"Failed to get local memory stats: {e}", "DEBUG")
+
         return {
             "backboard_connected": self.backboard_available(),
+            "local_memory_available": self.local_memory_available(),
+            "using_local_memory": self.use_local_memory(),
             "team_available": self.team_available(),
             "last_capture": last_session.get("timestamp") if last_session else None,
             "last_summary": last_session.get("summary") or (
                 last_session.get("context", {}).get("summary") if last_session else None
             ),
+            "local_memory_stats": local_memory_stats,
         }
 
 
@@ -1242,8 +1398,29 @@ Return ONLY the JSON array."""
         # Generate document ID
         doc_id = f"doc_{uuid.uuid4().hex[:12]}"
 
-        # Store to Backboard if available
-        if service.backboard_available():
+        # Store to local vector memory if available
+        vector_stored = False
+        if service.local_memory_available():
+            try:
+                tag_str = " ".join(f"#{t}" for t in tag_list)
+                content_to_store = f"**Document**: {filename}\n{tag_str}\n\n{note}\n\n---\n\n{extracted_text[:10000]}"
+                await service.local_memory.store_message(
+                    content=content_to_store,
+                    namespace="personal",
+                    content_type="document",
+                    metadata={
+                        "filename": filename,
+                        "doc_id": doc_id,
+                        "tags": tag_list,
+                    }
+                )
+                vector_stored = True
+                log(f"Document stored to local vector memory: {filename}", "DEBUG")
+            except Exception as e:
+                log(f"Failed to store document to vector memory: {e}", "WARN")
+
+        # Store to Backboard if available (and not using local memory exclusively)
+        if service.backboard_available() and not service.use_local_memory():
             thread_id = os.environ.get("BACKBOARD_PERSONAL_THREAD_ID")
             if thread_id:
                 tag_str = " ".join(f"#{t}" for t in tag_list)
@@ -1272,6 +1449,7 @@ Return ONLY the JSON array."""
             "filename": filename,
             "summary": summary,
             "tags": tag_list,
+            "vector_stored": vector_stored,
         }
 
     return app

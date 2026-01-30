@@ -40,6 +40,7 @@ if [ ! -f "$PROMPT_FILE" ]; then
     exit 1
 fi
 
+
 while true; do
     if [ $MAX_ITERATIONS -gt 0 ] && [ $ITERATION -ge $MAX_ITERATIONS ]; then
         echo "Reached max iterations: $MAX_ITERATIONS"
@@ -68,3 +69,4 @@ while true; do
     ITERATION=$((ITERATION + 1))
     echo -e "\n\n======================== LOOP $ITERATION ========================\n"
 done
+
