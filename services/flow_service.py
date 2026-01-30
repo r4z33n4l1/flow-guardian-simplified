@@ -3,6 +3,7 @@
 Provides shared service functions for CLI, HTTP API, and MCP server.
 Reuses existing modules: capture, memory, restore, backboard_client.
 """
+import os
 from datetime import datetime
 from typing import Optional
 
@@ -11,6 +12,31 @@ import memory
 import restore
 import backboard_client
 from backboard_client import BackboardError
+
+# Local memory (Backboard replacement)
+_local_memory_service = None
+_local_memory_checked = False
+
+def _get_local_memory():
+    """Lazy-load local memory service."""
+    global _local_memory_service, _local_memory_checked
+
+    # Always check env var - don't cache "not available" state
+    if os.environ.get("USE_LOCAL_MEMORY", "").lower() != "true":
+        return None
+
+    # Only initialize once if enabled
+    if not _local_memory_checked:
+        _local_memory_checked = True
+        try:
+            from local_memory import LocalMemoryService
+            _local_memory_service = LocalMemoryService()
+        except Exception as e:
+            import sys
+            print(f"Warning: Could not initialize local memory: {e}", file=sys.stderr)
+            _local_memory_service = None
+
+    return _local_memory_service
 
 from services.config import FlowConfig
 from services.models import (
@@ -86,37 +112,54 @@ class FlowService:
         """
         Search for relevant context/learnings.
 
-        Uses Backboard.io semantic search when available,
-        falls back to local keyword search.
-        Extracted from flow.py recall command.
+        Priority:
+        1. Local vector memory (if USE_LOCAL_MEMORY=true)
+        2. Backboard.io semantic search
+        3. Local keyword search fallback
         """
         results = []
-        used_backboard = False
+        source = "local"
 
-        # Try Backboard.io first
-        if self.config.personal_thread_id:
+        # Try local vector memory first (new system)
+        local_mem = _get_local_memory()
+        if local_mem:
+            try:
+                vector_results = await local_mem.search_raw(
+                    query=request.query,
+                    namespace="personal",
+                    limit=request.limit,
+                )
+                if vector_results:
+                    results = vector_results
+                    source = "vector"
+            except Exception:
+                pass
+
+        # Fallback to Backboard.io if no local vector results
+        if not results and self.config.personal_thread_id:
             try:
                 response = await backboard_client.recall(
                     self.config.personal_thread_id, request.query
                 )
                 if response:
                     results = [{"type": "recall", "content": response}]
-                    used_backboard = True
+                    source = "backboard"
             except BackboardError:
                 pass
 
-        # Fallback to local search
+        # Final fallback: local keyword search
         if not results:
             local_results = memory.search_learnings(
                 request.query, request.tags or None
             )
             results = local_results[: request.limit]
+            source = "local"
 
         return RecallResponse(
             success=True,
             query=request.query,
             results=results,
-            source="backboard" if used_backboard else "local",
+            source=source,
         )
 
     async def store_learning(self, request: LearnRequest) -> LearnResponse:
@@ -124,7 +167,7 @@ class FlowService:
         Store a learning or insight.
 
         Stores to team or personal memory based on share_with_team flag.
-        Extracted from flow.py learn command.
+        Now also stores to local vector memory for semantic search.
         """
         # Build learning object
         learning = {
@@ -134,10 +177,26 @@ class FlowService:
             "author": self.config.user,
         }
 
-        # Store locally first
+        # Store to local JSON first
         learning_id = memory.save_learning(learning)
 
-        # Try to store to Backboard.io
+        # Store to local vector memory (new system)
+        vector_stored = False
+        local_mem = _get_local_memory()
+        if local_mem:
+            try:
+                namespace = "team" if request.share_with_team else "personal"
+                await local_mem.store_message(
+                    content=request.insight,
+                    namespace=namespace,
+                    content_type="learning",
+                    metadata={"tags": request.tags or [], "author": self.config.user},
+                )
+                vector_stored = True
+            except Exception:
+                pass
+
+        # Try to store to Backboard.io (legacy/backup)
         backboard_stored = False
         thread_id = (
             self.config.team_thread_id
@@ -172,6 +231,7 @@ class FlowService:
             tags=request.tags or [],
             scope="team" if request.share_with_team else "personal",
             stored_backboard=backboard_stored,
+            stored_vector=vector_stored,
         )
 
     async def query_team(self, request: TeamQueryRequest) -> TeamQueryResponse:

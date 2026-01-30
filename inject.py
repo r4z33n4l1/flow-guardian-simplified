@@ -74,10 +74,10 @@ async def generate_injection(
 
 async def _recall_for_injection(handoff: Optional[dict], limit: int = 10) -> list:
     """
-    Query Backboard for context relevant to current session.
+    Query local memory for context relevant to current session.
 
-    Uses context-aware queries with project, branch, and focus info.
-    Falls back to local memory if Backboard is unavailable.
+    Uses local vector storage with Gemini embeddings for semantic search.
+    Falls back to keyword search if embeddings unavailable.
 
     Args:
         handoff: Current handoff state (for building contextual query)
@@ -86,31 +86,42 @@ async def _recall_for_injection(handoff: Optional[dict], limit: int = 10) -> lis
     Returns:
         List of recall results with metadata
     """
-    thread_id = os.environ.get("BACKBOARD_PERSONAL_THREAD_ID")
-    if not thread_id:
-        logger.debug("No BACKBOARD_PERSONAL_THREAD_ID, skipping Backboard recall")
-        return _local_fallback(handoff, limit)
+    # Build contextual query for session start
+    query = _build_recall_query(handoff)
 
+    # Try local vector memory with Gemini embeddings first
     try:
-        from backboard_client import recall, BackboardError
+        from local_memory import LocalMemoryService
 
-        # Build contextual query for session start
-        query = _build_recall_query(handoff)
+        service = LocalMemoryService()
 
-        # Call Backboard recall
-        result = await recall(thread_id, query)
+        # Use search_raw for structured results (no LLM synthesis at startup)
+        results = await service.search_raw(
+            query=query,
+            namespace="personal",
+            limit=limit,
+        )
 
-        # Parse result into list format
-        if result:
-            # Wrap the result and categorize
-            parsed_results = [{"content": result, "metadata": {"type": "context"}}]
-            # Apply relevance scoring and limit
+        if results:
+            # Convert to standard format
+            parsed_results = []
+            for r in results:
+                parsed_results.append({
+                    "content": r.get("content", ""),
+                    "metadata": {
+                        "type": r.get("content_type", "context"),
+                        "timestamp": r.get("metadata", {}).get("timestamp"),
+                        "tags": r.get("metadata", {}).get("tags", []),
+                        **r.get("metadata", {})
+                    }
+                })
             return _score_and_filter_results(parsed_results, handoff, limit)
-        return []
 
     except Exception as e:
-        logger.warning(f"Backboard recall failed: {e}")
-        return _local_fallback(handoff, limit)
+        logger.debug(f"Local vector search failed: {e}")
+
+    # Fallback to local JSON memory
+    return _local_fallback(handoff, limit)
 
 
 def _build_recall_query(handoff: Optional[dict]) -> str:
