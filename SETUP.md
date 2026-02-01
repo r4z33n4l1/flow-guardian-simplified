@@ -141,11 +141,57 @@ python server.py mcp
 
 ## MCP Integration (Claude Code)
 
-Flow Guardian automatically provides MCP tools to Claude Code.
+Flow Guardian provides MCP tools that Claude Code can use directly in conversations.
+
+### Important: MCP vs Daemon
+
+Flow Guardian has TWO separate components:
+
+1. **MCP Server** - Provides tools to Claude Code (you configure this)
+2. **Daemon** - Auto-captures sessions in background (runs separately)
+
+**They are independent.** You need both for full functionality.
 
 ### Configure MCP
 
-The `.mcp.json` file is already configured. Just ensure your virtual environment is active when Claude Code starts.
+**Step 1: Find your virtual environment path**
+
+After running `./setup.sh`, note the path:
+
+```bash
+# Get the full path to your venv Python
+which python  # Make sure venv is activated first
+# Example output: /Users/yourname/flow-guardian-simplified/venv/bin/python
+```
+
+**Step 2: Create Claude Code MCP configuration**
+
+Create or edit `~/.claude/.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "flow-guardian": {
+      "command": "/Users/yourname/flow-guardian-simplified/venv/bin/python",
+      "args": ["server.py", "mcp"],
+      "cwd": "/Users/yourname/flow-guardian-simplified",
+      "env": {
+        "CEREBRAS_API_KEY": "csk-...",
+        "GEMINI_API_KEY": "..."
+      }
+    }
+  }
+}
+```
+
+**Replace:**
+- `/Users/yourname/flow-guardian-simplified/venv/bin/python` with your actual venv Python path
+- `/Users/yourname/flow-guardian-simplified` with your actual project directory
+- `csk-...` and `...` with your actual API keys
+
+**Step 3: Restart Claude Code**
+
+Close and reopen Claude Code to load the MCP server.
 
 **Available MCP Tools:**
 - `flow_recall(query)` - Search memory
@@ -159,10 +205,31 @@ The `.mcp.json` file is already configured. Just ensure your virtual environment
 In Claude Code, try:
 
 ```
-Can you recall what we learned about authentication?
+Can you check flow guardian status?
 ```
 
-Claude will automatically use the `flow_recall` tool.
+Claude should use the `flow_status()` tool and show service information.
+
+### MCP Troubleshooting
+
+**"MCP tools not appearing"**
+
+Check Claude Code logs:
+1. Open Claude Code
+2. Look for "flow-guardian" in the MCP status panel
+3. Check for errors in the Claude Code developer console
+
+**"Permission denied"**
+
+Make sure the Python path is executable:
+```bash
+ls -l /path/to/venv/bin/python
+# Should show execute permissions (x)
+```
+
+**"API key errors"**
+
+Verify your API keys are in `.mcp.json` env section, not in the project `.env` file. MCP needs its own copy of the keys.
 
 ---
 

@@ -1,274 +1,283 @@
 # Flow Guardian
 
-**"Claude forgets. Flow Guardian remembers."**
+**Persistent memory for Claude Code sessions.**
 
-Persistent memory for AI coding sessions. Save your context, learnings, and decisions — restore them automatically in future sessions.
+Flow Guardian runs in the background, automatically capturing your coding sessions and making them searchable. Stop re-explaining your codebase to Claude every time.
 
-Built for the [8090 x Highline Beta: Build for Builders Hackathon](https://lu.ma/8090-hackathon).
+## Features
 
-## The Problem
+- 🤖 **Auto-Capture** - Daemon watches Claude Code sessions automatically
+- 🔍 **Semantic Search** - Vector embeddings + keyword search (SQLite + sqlite-vec)
+- 🛠️ **MCP Tools** - Use memory directly in Claude Code conversations
+- 🌐 **REST API** - Programmatic access for integrations
+- 💾 **Local-First** - All data stored locally in SQLite
+- 👥 **Team Mode** - Share knowledge via self-hosted server
+- 🚀 **Zero Config** - Works out of the box with sensible defaults
 
-1. You have a great coding session with Claude
-2. You figure out how your codebase works, debug issues, make decisions
-3. Session ends or context fills up
-4. **Claude has amnesia.** You explain the same things. Again.
+## Quick Start
 
-## The Solution
+```bash
+# 1. Setup
+./setup.sh
 
-Flow Guardian automatically captures your session context and restores it when you return — no manual commands needed.
+# 2. Configure (add your API keys)
+cp .env.example .env
+nano .env
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         HOW FLOW GUARDIAN WORKS                              │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│   SESSION 1                          SESSION 2 (Next Day)                   │
-│   ─────────                          ────────────────────                   │
-│                                                                              │
-│   You: "Debug the JWT auth"          You: "Continue working"                │
-│        │                                   │                                │
-│        ▼                                   ▼                                │
-│   ┌─────────────┐                    ┌─────────────────────────────────┐   │
-│   │ Claude works│                    │ Flow Guardian auto-injects:     │   │
-│   │ finds bug   │                    │                                 │   │
-│   │ fixes code  │                    │ "You were debugging JWT auth.   │   │
-│   └─────────────┘                    │  Your hypothesis: off-by-one    │   │
-│        │                             │  in timestamp comparison.       │   │
-│        ▼                             │  Files: src/auth.py             │   │
-│   Session ends                       │  Status: Fix verified"          │   │
-│        │                             └─────────────────────────────────┘   │
-│        ▼                                   │                                │
-│   ┌─────────────────┐                      ▼                                │
-│   │ Auto-captured:  │                Claude immediately knows context       │
-│   │ • Goal          │                No re-explaining needed!               │
-│   │ • Hypothesis    │                                                       │
-│   │ • Files touched │                                                       │
-│   │ • Branch        │                                                       │
-│   └─────────────────┘                                                       │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
+# 3. Run
+source venv/bin/activate
+python server.py all --foreground
 ```
 
-## Key Innovation: 97% Token Savings
+That's it! Flow Guardian is now auto-capturing your Claude Code sessions.
 
-Flow Guardian's TLDR system compresses context before injection:
+## How It Works
 
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        TLDR TOKEN EFFICIENCY                            │
-├────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│   Without Flow Guardian          With Flow Guardian                     │
-│   ──────────────────────         ───────────────────                    │
-│                                                                         │
-│   Raw file read: 51,612 tokens   TLDR summary: 1,480 tokens            │
-│                                                                         │
-│   ████████████████████████████   █                                      │
-│                                                                         │
-│   Context fills up fast          97% SAVINGS = More room for work      │
-│                                                                         │
-└────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────┐
+│  Claude Code Session                     │
+│  ↓ (auto-capture)                        │
+│  Daemon                                  │
+│  ↓ (stores to)                           │
+│  SQLite + Vectors (local)                │
+│  ↓ (searchable via)                      │
+│  MCP Tools / REST API / CLI              │
+└─────────────────────────────────────────┘
+```
+
+**What gets captured:**
+- Session summaries
+- Key decisions
+- Learnings and insights
+- Code patterns
+- Blockers and next steps
+
+**How you access it:**
+- MCP tools in Claude Code (automatic)
+- CLI: `flow recall "auth implementation"`
+- REST API: `POST /recall`
+
+## Usage
+
+### MCP Tools (Claude Code)
+
+Flow Guardian provides tools that Claude can use directly:
+
+```python
+# In Claude Code, just ask:
+"What did we learn about authentication?"
+
+# Claude automatically uses:
+flow_recall("authentication")
+
+# Store a learning:
+"Remember that JWT tokens use UTC timestamps"
+
+# Claude uses:
+flow_learn("JWT tokens use UTC timestamps", tags=["auth"])
+```
+
+**Available MCP Tools:**
+- `flow_recall(query)` - Search memory
+- `flow_learn(insight, tags)` - Store learning
+- `flow_capture(summary, decisions)` - Save session context
+- `flow_team(query)` - Search team knowledge
+- `flow_status()` - Get status
+
+### CLI (Terminal)
+
+```bash
+# Search memory
+flow recall "how did we implement caching"
+
+# Store learning
+flow learn "Tailwind needs --watch flag in dev" --tags css,dev
+
+# Save context
+flow save -m "Completed auth refactor"
+
+# Get status
+flow status
+```
+
+### REST API
+
+```bash
+# Search memory
+curl -X POST http://localhost:8090/recall \
+  -H "Content-Type: application/json" \
+  -d '{"query": "authentication"}'
+
+# Store learning
+curl -X POST http://localhost:8090/learn \
+  -H "Content-Type: application/json" \
+  -d '{"insight": "Use RS256 for JWT", "tags": ["auth"]}'
 ```
 
 ## Architecture
 
+### Local-First Storage
+
+All data stored in `~/.flow-guardian/`:
+
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              FLOW GUARDIAN                                   │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │                         HOOKS (Automatic)                              │  │
-│  ├───────────────────────────────────────────────────────────────────────┤  │
-│  │                                                                        │  │
-│  │  SessionStart ──► Auto-inject context from last session               │  │
-│  │                                                                        │  │
-│  │  PreToolUse:Read ──► TLDR Enforcer (97% token savings)                │  │
-│  │                                                                        │  │
-│  │  PreCompact ──► Save state before context compaction                  │  │
-│  │                                                                        │  │
-│  └───────────────────────────────────────────────────────────────────────┘  │
-│                                    │                                         │
-│                                    ▼                                         │
-│  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │                         CORE MODULES                                   │  │
-│  ├───────────────────────────────────────────────────────────────────────┤  │
-│  │                                                                        │  │
-│  │  handoff.py ──► YAML checkpoints (.flow-guardian/handoff.yaml)        │  │
-│  │                                                                        │  │
-│  │  tldr.py ──► Cerebras-powered summarization (L0/L1/L2 depth)          │  │
-│  │                                                                        │  │
-│  │  inject.py ──► Context injection orchestrator                         │  │
-│  │                                                                        │  │
-│  │  memory.py ──► Local JSON storage (~/.flow-guardian/)                 │  │
-│  │                                                                        │  │
-│  └───────────────────────────────────────────────────────────────────────┘  │
-│                                    │                                         │
-│                                    ▼                                         │
-│  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │                         CLOUD SERVICES                                 │  │
-│  ├───────────────────────────────────────────────────────────────────────┤  │
-│  │                                                                        │  │
-│  │  Backboard.io ──► Semantic memory (search past sessions by meaning)   │  │
-│  │                   Model: Gemini 2.5 Flash                              │  │
-│  │                                                                        │  │
-│  │  Cerebras ──► Fast LLM inference for TLDR generation                  │  │
-│  │              Model: zai-glm-4.7 (3000+ tokens/sec)                     │  │
-│  │                                                                        │  │
-│  └───────────────────────────────────────────────────────────────────────┘  │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
+~/.flow-guardian/
+├── sessions/           # Session JSON files
+├── learnings/          # Learning JSON files
+├── memory.db           # SQLite + vector embeddings
+└── daemon/             # Daemon state
 ```
 
-## Quick Start
+### Components
 
-### 1. Install Dependencies
-```bash
-pip install -r requirements.txt
-cd flow-web && npm install
-```
+1. **Daemon** - Background watcher for Claude Code sessions
+2. **Local Memory** - SQLite database with vector search (sqlite-vec)
+3. **MCP Server** - Provides tools to Claude Code
+4. **REST API** - HTTP interface for integrations
+5. **CLI** - Command-line interface
 
-### 2. Configure Environment
-```bash
-cp .env.example .env
-# Edit .env with:
-# - CEREBRAS_API_KEY
-# - BACKBOARD_API_KEY
-# - BACKBOARD_PERSONAL_THREAD_ID
-```
+### Tech Stack
 
-### 3. Setup Flow Guardian in Your Project
-```bash
-cd your-project
-flow setup  # Creates .flow-guardian/ and hooks
-```
+- **Storage**: SQLite + sqlite-vec (local vector database)
+- **Embeddings**: Google Gemini text-embedding-004 (768 dimensions)
+- **LLM**: Cerebras Llama 3.3 70B (for extraction and synthesis)
+- **MCP**: Model Context Protocol for Claude Code integration
+- **API**: FastAPI + Uvicorn
 
-### 4. Start Working
-```bash
-# Start a Claude Code session - context auto-injects!
-claude
+## Team Features
 
-# Manually save progress anytime
-flow save --summary "Working on auth" --hypothesis "Token expiry bug"
+Flow Guardian supports team knowledge sharing through self-hosted servers:
 
-# Search past sessions
-flow recall "authentication"
+### Option 1: Shared Network Drive
 
-# Store a learning
-flow learn "PyMuPDF requires pip install pymupdf" --tags pdf,dependency
-```
-
-## CLI Commands
-
-| Command | Description |
-|---------|-------------|
-| `flow setup` | Initialize Flow Guardian in a project |
-| `flow save` | Checkpoint current session state |
-| `flow inject` | Manually inject context (usually automatic) |
-| `flow recall <query>` | Search memory semantically |
-| `flow learn <insight>` | Store a persistent learning |
-| `flow status` | Check system status |
-| `flow history` | View session history |
-
-## MCP Tools (for Claude Code)
-
-```python
-flow_capture(summary, decisions, next_steps, blockers)  # Save context
-flow_recall(query)                                       # Search memory
-flow_learn(insight, tags, share_with_team)              # Store learning
-flow_team(query)                                         # Search team knowledge
-flow_status()                                            # Check status
-```
-
-## Web Interface
-
-A conversational chat interface for searching team knowledge:
+Point all team members to the same SQLite database:
 
 ```bash
-cd flow-web && npm run dev
-# Open http://localhost:3000
+export FLOW_GUARDIAN_DATA_DIR=/Volumes/TeamDrive/flow-guardian/
+python server.py all
 ```
 
-```
-You: What library did we install for PDF uploads?
-Flow: The library installed is PyMuPDF.
-      Source: learning, Time: 2026-01-17
-```
+### Option 2: Central Server (Recommended)
 
-## How It Works
+One team member hosts the server:
 
-### Handoff System
-Every session state is captured in `.flow-guardian/handoff.yaml`:
+```bash
+# Server
+python server.py all --host 0.0.0.0 --port 8090
 
-```yaml
-goal: "Implement user authentication with JWT"
-status: in_progress
-now: "Debugging token expiry in auth.py"
-hypothesis: "Off-by-one error in timestamp comparison"
-files:
-  - src/auth.py
-  - tests/test_auth.py
-branch: fix/jwt-expiry
-timestamp: 2026-01-17T10:30:00Z
+# Clients (add to .env)
+FLOW_GUARDIAN_TEAM_URL=http://team-server:8090
 ```
 
-### TLDR System (Token Efficiency)
-Never inject raw content. Summarize via Cerebras first:
+Team members can now use:
 
-- **L0**: File paths + function names only (~100 tokens)
-- **L1**: + One-line descriptions (~500 tokens)
-- **L2**: + Key logic summaries (~2000 tokens)
-
-### Hooks (Automatic)
-No manual commands needed. Hooks fire automatically:
-
-| Hook | When | Action |
-|------|------|--------|
-| SessionStart | New session | Inject context from handoff.yaml |
-| PreToolUse:Read | Reading files | TLDR summary instead of raw (97% savings) |
-| PreCompact | Before compaction | Save state to handoff.yaml |
-
-## File Structure
-
-```
-flow-guardian/
-├── .claude/
-│   ├── settings.json           # Hook configuration
-│   └── hooks/
-│       ├── flow-inject.sh      # SessionStart hook
-│       ├── flow-precompact.sh  # PreCompact hook
-│       └── tldr-read-enforcer.py  # TLDR Read Enforcer
-├── .flow-guardian/
-│   ├── config.yaml             # Project config
-│   └── handoff.yaml            # Session state checkpoint
-├── handoff.py                  # YAML checkpoint management
-├── tldr.py                     # Token-efficient summarization
-├── inject.py                   # Context injection orchestrator
-├── flow_cli.py                 # CLI commands
-├── memory.py                   # Local JSON storage
-├── backboard_client.py         # Backboard.io integration
-├── cerebras_client.py          # Cerebras LLM client
-├── server.py                   # Unified backend (daemon + API + MCP)
-├── flow-web/                   # Next.js web interface
-└── tests/                      # 413 tests
+```bash
+flow team "authentication patterns"  # Queries team server
 ```
 
-## Tech Stack
+See [TEAM_SETUP.md](TEAM_SETUP.md) for detailed configuration.
 
-- **Cerebras** — Fast LLM inference (zai-glm-4.7, 3000+ tokens/sec)
-- **Backboard.io** — Semantic memory with Gemini 2.5 Flash
-- **Next.js 14+** — React framework for web UI
-- **FastAPI** — Python backend
-- **Claude Code Hooks** — Automatic context injection
+## Configuration
 
-## Test Results
+### Required Environment Variables
 
+```bash
+# LLM for extraction and synthesis
+CEREBRAS_API_KEY=csk-...
+
+# Embeddings for semantic search
+GEMINI_API_KEY=...
 ```
-413 tests passing
-97% token savings with TLDR
-< 2 second context injection
+
+### Optional Configuration
+
+```bash
+# Your username (for team attribution)
+FLOW_GUARDIAN_USER=yourname
+
+# Team server URL
+FLOW_GUARDIAN_TEAM_URL=http://team-server:8090
+
+# Data directory (default: ~/.flow-guardian)
+FLOW_GUARDIAN_DATA_DIR=~/.flow-guardian
 ```
+
+See `.env.example` for all options.
+
+## Running Modes
+
+```bash
+# Daemon + API (recommended)
+python server.py all --foreground
+
+# Daemon only (background auto-capture)
+python server.py daemon
+python server.py status
+python server.py stop
+
+# API only (HTTP server)
+python server.py api
+
+# MCP only (stdio for Claude Code)
+python server.py mcp
+```
+
+## Development
+
+```bash
+# Activate virtual environment
+source venv/bin/activate
+
+# Run in development mode
+python server.py all --foreground
+
+# Check status
+curl http://localhost:8090/health
+
+# View logs
+tail -f ~/.flow-guardian/daemon/server.log
+```
+
+## Documentation
+
+- **Setup Guide**: [SETUP.md](SETUP.md) - Detailed installation instructions
+- **Team Setup**: [TEAM_SETUP.md](TEAM_SETUP.md) - Multi-user configuration
+- **Architecture**: [ARCHITECTURE.md](ARCHITECTURE.md) - System design details
+- **API Reference**: http://localhost:8090/docs (when running)
+- **Changelog**: [CHANGELOG.md](CHANGELOG.md) - Version history
+
+## Requirements
+
+- Python 3.10+
+- API keys (free tiers available):
+  - Cerebras Cloud API
+  - Google Gemini API
+
+## What's Different from v1.0?
+
+This is the simplified, local-first version:
+
+**Removed:**
+- Web UI (use REST API instead)
+- Linear integration
+- Backboard cloud storage
+- Document upload
+- Auto-documentation generation
+
+**Kept (100% functional):**
+- Auto-capture daemon
+- MCP tools
+- REST API
+- CLI
+- Local vector search
+- Team features (via self-hosted server)
+
+See [MIGRATION.md](MIGRATION.md) for upgrading from v1.x.
 
 ## License
 
 MIT
+
+---
+
+**"Claude forgets. Flow Guardian remembers."**

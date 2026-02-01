@@ -50,16 +50,38 @@ pip install -r requirements.txt
 echo ""
 echo "✅ Setup complete!"
 echo ""
-echo "Next steps:"
-echo "  1. Activate virtual environment:"
-echo "     source venv/bin/activate"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "📋 Next Steps"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-echo "  2. Copy and configure environment variables:"
-echo "     cp .env.example .env"
-echo "     # Edit .env with your API keys"
+echo "1. Activate virtual environment:"
+echo "   source venv/bin/activate"
 echo ""
-echo "  3. Start Flow Guardian:"
-echo "     python server.py all --foreground"
+echo "2. Configure environment variables:"
+echo "   cp .env.example .env"
+echo "   # Edit .env with your API keys (CEREBRAS_API_KEY, GEMINI_API_KEY)"
 echo ""
-echo "  4. Or use MCP tools directly in Claude Code"
-echo "     (MCP tools auto-configured via .mcp.json)"
+echo "3. Start Flow Guardian (daemon + API):"
+echo "   python server.py all --foreground"
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "🔌 MCP Integration (for Claude Code)"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+echo "Add this to your ~/.claude/.mcp.json:"
+echo ""
+echo '{'
+echo '  "mcpServers": {'
+echo '    "flow-guardian": {'
+echo "      \"command\": \"$(pwd)/venv/bin/python\","
+echo '      "args": ["server.py", "mcp"],'
+echo "      \"cwd\": \"$(pwd)\","
+echo '      "env": {'
+echo '        "CEREBRAS_API_KEY": "csk-...",'
+echo '        "GEMINI_API_KEY": "..."'
+echo '      }'
+echo '    }'
+echo '  }'
+echo '}'
+echo ""
+echo "Then restart Claude Code to load the MCP tools."
