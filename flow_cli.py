@@ -21,8 +21,6 @@ from rich.prompt import Prompt
 import capture
 import memory
 import restore
-import backboard_client
-from backboard_client import BackboardError, BackboardAuthError
 
 # Rich console for beautiful output
 console = Console()
@@ -49,8 +47,7 @@ def cli():
 def save(message: Optional[str], tag: tuple, quiet: bool):
     """Save current session context to memory.
 
-    Captures git state, analyzes context with AI, and stores
-    to Backboard.io (or local fallback).
+    Captures git state, analyzes context with AI, and stores locally.
 
     Examples:
         flow save
@@ -69,22 +66,8 @@ def save(message: Optional[str], tag: tuple, quiet: bool):
             tags=tags
         )
 
-        # Store locally first (always works)
+        # Store locally
         session_id = memory.save_session(session)
-
-        # Try to store to Backboard.io
-        backboard_stored = False
-        thread_id = os.environ.get("BACKBOARD_PERSONAL_THREAD_ID")
-
-        if thread_id:
-            try:
-                backboard_client.run_async(
-                    backboard_client.store_session(thread_id, session)
-                )
-                backboard_stored = True
-            except BackboardError:
-                if not quiet:
-                    console.print("[yellow]Backboard unavailable, using local storage[/yellow]")
 
         # Update handoff.yaml for seamless context restoration
         try:
@@ -112,14 +95,14 @@ def save(message: Optional[str], tag: tuple, quiet: bool):
         if quiet:
             console.print(session_id)
         else:
-            _display_save_confirmation(session, backboard_stored)
+            _display_save_confirmation(session)
 
     except Exception as e:
         console.print(f"[red]Error saving session: {e}[/red]")
         sys.exit(1)
 
 
-def _display_save_confirmation(session: dict, backboard_stored: bool):
+def _display_save_confirmation(session: dict):
     """Display a beautiful confirmation panel for save."""
     context = session.get("context", {})
     git = session.get("git", {})
@@ -155,8 +138,7 @@ def _display_save_confirmation(session: dict, backboard_stored: bool):
     lines.append("")
 
     # Storage status
-    storage = "Backboard.io + local" if backboard_stored else "local"
-    lines.append(f"[dim]Stored:[/dim] {storage}")
+    lines.append(f"[dim]Stored:[/dim] local")
     lines.append(f"[dim]ID:[/dim] {session.get('id')}")
 
     panel = Panel(
@@ -340,38 +322,14 @@ def learn(text: str, tag: tuple, team: bool):
         # Store locally
         memory.save_learning(learning)
 
-        # Try to store to Backboard.io
-        backboard_stored = False
-        thread_id = os.environ.get(
-            "BACKBOARD_TEAM_THREAD_ID" if team else "BACKBOARD_PERSONAL_THREAD_ID"
-        )
-
-        if thread_id:
-            try:
-                if team:
-                    backboard_client.run_async(
-                        backboard_client.store_team_learning(
-                            thread_id, text, author, tags
-                        )
-                    )
-                else:
-                    backboard_client.run_async(
-                        backboard_client.store_learning(
-                            thread_id, text, tags, author
-                        )
-                    )
-                backboard_stored = True
-            except BackboardError:
-                pass
-
-        _display_learning_confirmation(text, tags, team, author, backboard_stored)
+        _display_learning_confirmation(text, tags, team, author)
 
     except Exception as e:
         console.print(f"[red]Error storing learning: {e}[/red]")
         sys.exit(1)
 
 
-def _display_learning_confirmation(text: str, tags: list, team: bool, author: str, backboard_stored: bool):
+def _display_learning_confirmation(text: str, tags: list, team: bool, author: str):
     """Display confirmation for stored learning."""
     lines = []
     lines.append(f'[bold]"{text}"[/bold]')
@@ -400,8 +358,7 @@ def _display_learning_confirmation(text: str, tags: list, team: bool, author: st
 def recall(query: str, tag: tuple, limit: int):
     """Search your stored learnings and context.
 
-    Uses semantic search when Backboard.io is available,
-    falls back to keyword search locally.
+    Uses local keyword search and semantic vector search.
 
     Examples:
         flow recall "authentication"
@@ -414,34 +371,17 @@ def recall(query: str, tag: tuple, limit: int):
     tags = list(tag)
 
     try:
-        results = []
-        used_backboard = False
+        # Local search
+        results = memory.search_learnings(query, tags)[:limit]
 
-        # Try Backboard.io first
-        thread_id = os.environ.get("BACKBOARD_PERSONAL_THREAD_ID")
-        if thread_id:
-            try:
-                response = backboard_client.run_async(
-                    backboard_client.recall(thread_id, query)
-                )
-                if response:
-                    results = [{"type": "recall", "content": response}]
-                    used_backboard = True
-            except BackboardError:
-                pass
-
-        # Fall back to local search
-        if not results:
-            results = memory.search_learnings(query, tags)[:limit]
-
-        _display_recall_results(query, results, used_backboard)
+        _display_recall_results(query, results)
 
     except Exception as e:
         console.print(f"[red]Error searching: {e}[/red]")
         sys.exit(1)
 
 
-def _display_recall_results(query: str, results: list, used_backboard: bool):
+def _display_recall_results(query: str, results: list):
     """Display recall results."""
     if not results:
         console.print(f"[yellow]No results found for '{query}'[/yellow]")
@@ -449,26 +389,21 @@ def _display_recall_results(query: str, results: list, used_backboard: bool):
         return
 
     lines = []
+    lines.append(f"Found {len(results)} relevant items:\n")
 
-    if used_backboard and results:
-        # Backboard returns a summary
-        lines.append(results[0].get("content", ""))
-    else:
-        # Local results
-        lines.append(f"Found {len(results)} relevant items:\n")
-        for i, result in enumerate(results, 1):
-            if isinstance(result, dict):
-                text = result.get("text", "")
-                tags = result.get("tags", [])
-                timestamp = result.get("timestamp", "")
+    for i, result in enumerate(results, 1):
+        if isinstance(result, dict):
+            text = result.get("text", "")
+            tags = result.get("tags", [])
+            timestamp = result.get("timestamp", "")
 
-                lines.append(f"[bold]{i}.[/bold] {text}")
-                if tags:
-                    lines.append(f"   [dim]Tags: {', '.join(tags)}[/dim]")
-                if timestamp:
-                    elapsed = restore.calculate_time_elapsed(timestamp)
-                    lines.append(f"   [dim]{elapsed} ago[/dim]")
-                lines.append("")
+            lines.append(f"[bold]{i}.[/bold] {text}")
+            if tags:
+                lines.append(f"   [dim]Tags: {', '.join(tags)}[/dim]")
+            if timestamp:
+                elapsed = restore.calculate_time_elapsed(timestamp)
+                lines.append(f"   [dim]{elapsed} ago[/dim]")
+            lines.append("")
 
     panel = Panel(
         "\n".join(lines),
@@ -491,21 +426,37 @@ def team(query: str, tag: tuple, limit: int):
         flow team "caching strategies"
         flow team "database" --tag performance
     """
-    team_thread_id = os.environ.get("BACKBOARD_TEAM_THREAD_ID")
+    team_url = os.environ.get("FLOW_GUARDIAN_TEAM_URL")
 
-    if not team_thread_id:
-        console.print("[yellow]Team not configured.[/yellow]")
-        console.print("Run [bold]python setup_assistants.py[/bold] to set up team memory.")
+    if not team_url:
+        console.print("[yellow]Team server not configured.[/yellow]")
+        console.print("Set FLOW_GUARDIAN_TEAM_URL to your team's Flow Guardian server URL.")
+        console.print("Example: export FLOW_GUARDIAN_TEAM_URL=http://team-server:8090")
         return
 
     try:
-        response = backboard_client.run_async(
-            backboard_client.query_team_memory(team_thread_id, query)
+        import httpx
+
+        # Make request to team server
+        response = httpx.post(
+            f"{team_url}/team",
+            json={"query": query},
+            timeout=10.0
         )
+        response.raise_for_status()
+        data = response.json()
 
         lines = []
-        if response:
-            lines.append(response)
+        results = data.get("results", [])
+        if results:
+            lines.append(f"Found {len(results)} team items:\n")
+            for i, result in enumerate(results[:limit], 1):
+                content = result.get("content", "")
+                source = result.get("source", "")
+                lines.append(f"[bold]{i}.[/bold] {content}")
+                if source:
+                    lines.append(f"   [dim]Source: {source}[/dim]")
+                lines.append("")
         else:
             lines.append("No team learnings found.")
             lines.append("Share learnings with: [bold]flow learn \"...\" --team[/bold]")
@@ -517,9 +468,7 @@ def team(query: str, tag: tuple, limit: int):
         )
         console.print(panel)
 
-    except BackboardAuthError:
-        console.print("[red]Authentication failed. Check BACKBOARD_API_KEY.[/red]")
-    except BackboardError as e:
+    except Exception as e:
         console.print(f"[yellow]Team search unavailable: {e}[/yellow]")
 
 
@@ -567,8 +516,8 @@ def status():
 
         # Storage status
         lines.append("")
-        backboard_configured = bool(os.environ.get("BACKBOARD_PERSONAL_THREAD_ID"))
-        storage_status = "Backboard.io + local" if backboard_configured else "local only"
+        team_url = os.environ.get("FLOW_GUARDIAN_TEAM_URL")
+        storage_status = f"local + team ({team_url})" if team_url else "local only"
         lines.append(f"[dim]Storage:[/dim] {storage_status}")
 
         panel = Panel(
@@ -774,24 +723,10 @@ Include:
 Be specific and actionable. This will be used to restore context in a new session."""
 
         results = []
-        used_backboard = False
-
-        # Try Backboard.io
-        thread_id = os.environ.get("BACKBOARD_PERSONAL_THREAD_ID")
-        if thread_id:
-            try:
-                response = backboard_client.run_async(
-                    backboard_client.recall(thread_id, query)
-                )
-                if response:
-                    results.append(response)
-                    used_backboard = True
-            except BackboardError:
-                pass
 
         # Add local sessions info
         sessions = memory.list_sessions(limit=5)
-        if sessions and not used_backboard:
+        if sessions:
             results.append("\n[bold]Recent Sessions:[/bold]")
             for s in sessions:
                 summary = s.get("summary", "No summary")
@@ -801,7 +736,7 @@ Be specific and actionable. This will be used to restore context in a new sessio
 
         # Add local learnings
         learnings = memory.search_learnings("", [])[:5]
-        if learnings and not used_backboard:
+        if learnings:
             results.append("\n[bold]Recent Learnings:[/bold]")
             for l in learnings:
                 text = l.get("text", "")[:100]
@@ -823,11 +758,7 @@ Be specific and actionable. This will be used to restore context in a new sessio
             border_style="cyan"
         )
         console.print(panel)
-
-        if used_backboard:
-            console.print("\n[dim]Source: Backboard.io semantic memory[/dim]")
-        else:
-            console.print("\n[dim]Source: Local storage (connect Backboard.io for semantic search)[/dim]")
+        console.print("\n[dim]Source: Local storage[/dim]")
 
     except Exception as e:
         console.print(f"[red]Error getting context: {e}[/red]")
@@ -844,7 +775,7 @@ Be specific and actionable. This will be used to restore context in a new sessio
 def inject(quiet: bool, level: str, save_state: bool):
     """Inject context for Claude Code sessions.
 
-    Generates context from handoff.yaml and Backboard memory,
+    Generates context from handoff.yaml and local memory,
     formatted for Claude to understand your session state.
 
     Used by:
