@@ -241,6 +241,8 @@ tail -f ~/.flow-guardian/daemon/server.log
 ## Documentation
 
 - **Setup Guide**: [SETUP.md](SETUP.md) - Detailed installation instructions
+- **Provider Config**: [PROVIDERS.md](PROVIDERS.md) - Swap LLM/embedding providers
+- **Integration Guide**: [INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md) - How MCP and daemon connect
 - **Team Setup**: [TEAM_SETUP.md](TEAM_SETUP.md) - Multi-user configuration
 - **Architecture**: [ARCHITECTURE.md](ARCHITECTURE.md) - System design details
 - **API Reference**: http://localhost:8090/docs (when running)
@@ -249,9 +251,17 @@ tail -f ~/.flow-guardian/daemon/server.log
 ## Requirements
 
 - Python 3.10+
-- API keys (free tiers available):
-  - Cerebras Cloud API
-  - Google Gemini API
+- API keys (both have free tiers):
+  - **Cerebras Cloud API** - For LLM inference (extracting insights)
+    - Get key: https://cloud.cerebras.ai/
+  - **Google Gemini API** - For embeddings (semantic search)
+    - Get key: https://ai.google.dev/
+
+**Want to use different providers?** See [PROVIDERS.md](PROVIDERS.md) for:
+- OpenAI GPT-4
+- Local Ollama (free, no API keys)
+- Custom embedding models
+- Fully offline setup
 
 ## What's Different from v1.0?
 
