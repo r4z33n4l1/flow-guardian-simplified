@@ -1,5 +1,4 @@
 # Core dependencies
-backboard-sdk>=1.0.0
 cerebras-cloud-sdk>=1.0.0
 httpx>=0.25.0
 rich>=13.0.0

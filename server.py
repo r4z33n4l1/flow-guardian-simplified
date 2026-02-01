@@ -65,17 +65,9 @@ class FlowService:
     """Core business logic shared by all modes."""
 
     def __init__(self):
-        self._backboard = None
         self._cerebras = None
         self._memory = None
         self._local_memory = None
-
-    @property
-    def backboard(self):
-        if self._backboard is None:
-            import backboard_client
-            self._backboard = backboard_client
-        return self._backboard
 
     @property
     def cerebras(self):
@@ -109,29 +101,12 @@ class FlowService:
         return self.local_memory.is_available()
 
     def use_local_memory(self) -> bool:
-        """
-        Determine whether to use local memory instead of Backboard.
-
-        Returns True if:
-        - USE_LOCAL_MEMORY=true is set, OR
-        - Local memory is available AND Backboard is not configured
-        """
-        # Explicit preference via environment variable
-        use_local = os.environ.get("USE_LOCAL_MEMORY", "").lower() in ("true", "1", "yes")
-        if use_local:
-            return self.local_memory_available()
-
-        # Default: use local if available and Backboard not configured
-        if not self.backboard_available() and self.local_memory_available():
-            return True
-
-        return False
-
-    def backboard_available(self) -> bool:
-        return bool(os.environ.get("BACKBOARD_API_KEY"))
+        """Check if local memory is available (always true in simplified version)."""
+        return self.local_memory_available()
 
     def team_available(self) -> bool:
-        return bool(os.environ.get("BACKBOARD_TEAM_THREAD_ID"))
+        """Check if team server URL is configured."""
+        return bool(os.environ.get("FLOW_GUARDIAN_TEAM_URL"))
 
     # ---- Capture ----
     async def capture_context(
@@ -382,54 +357,7 @@ Example output: ["auth", "jwt", "token", "refresh"]""",
             if not is_duplicate:
                 results.append(vr)
 
-        # Search Backboard when:
-        # 1. local_only=False (frontend explicitly requested full search)
-        # 2. AND not using local memory exclusively
-        # 3. AND local results are insufficient (score < 3)
-        local_has_good_results = any(r.get("score", 0) >= 3 for r in results)
-        use_local = self.use_local_memory()
-
-        # Query Backboard when local_only=False and not using local memory exclusively
-        if not local_only and not use_local:
-            if not self.backboard_available():
-                log("Backboard not available (BACKBOARD_API_KEY not set)", "DEBUG")
-            else:
-                thread_id = os.environ.get("BACKBOARD_PERSONAL_THREAD_ID")
-                if not thread_id:
-                    log("Backboard available but BACKBOARD_PERSONAL_THREAD_ID not set", "WARN")
-                else:
-                    try:
-                        log(f"Querying Backboard (local_only={local_only}, local_results={len(results)}, has_good={local_has_good_results})...", "INFO")
-                        enhanced_query = " ".join(search_terms) if search_terms else query
-                        cloud_response = await self.backboard.recall(thread_id, enhanced_query)
-                        if cloud_response and len(cloud_response) > 20:
-                            results.append({
-                                "content": cloud_response,
-                                "source": "backboard",
-                                "timestamp": datetime.now().isoformat(),
-                                "score": 2,  # Lower than good local matches
-                            })
-                    except Exception as e:
-                        log(f"Backboard search error: {e}", "WARN")
-
-        # Also search Linear documents if available (Phase 3: Project docs)
-        if not local_only and os.environ.get("LINEAR_API_KEY"):
-            try:
-                import linear_client
-                enhanced_query = " ".join(search_terms) if search_terms else query
-                linear_docs = await linear_client.search_documents(enhanced_query, limit=5)
-                for doc in linear_docs:
-                    results.append({
-                        "content": f"**Linear Doc:** {doc.get('title', 'Untitled')}\n{doc.get('content', '')}",
-                        "source": "linear",
-                        "url": doc.get("url"),
-                        "timestamp": doc.get("updated_at"),
-                        "score": 3,  # Higher score - project documentation
-                    })
-                if linear_docs:
-                    log(f"Found {len(linear_docs)} Linear documents matching query", "INFO")
-            except Exception as e:
-                log(f"Linear document search error: {e}", "DEBUG")
+        # Local-only architecture - no cloud search needed
 
         # Sort by score (higher first) and limit
         results.sort(key=lambda x: x.get("score", 0), reverse=True)
@@ -461,7 +389,6 @@ Example output: ["auth", "jwt", "token", "refresh"]""",
             "results": results,
             "sources": {
                 "local": True,
-                "cloud": self.backboard_available(),
             }
         }
 
@@ -597,9 +524,7 @@ Example output: ["auth", "jwt", "token", "refresh"]""",
                 log(f"Failed to get local memory stats: {e}", "DEBUG")
 
         return {
-            "backboard_connected": self.backboard_available(),
             "local_memory_available": self.local_memory_available(),
-            "using_local_memory": self.use_local_memory(),
             "team_available": self.team_available(),
             "last_capture": last_session.get("timestamp") if last_session else None,
             "last_summary": last_session.get("summary") or (
@@ -640,110 +565,6 @@ class DaemonMode:
     def _save_state(self):
         DAEMON_DIR.mkdir(parents=True, exist_ok=True)
         STATE_FILE.write_text(json.dumps(self.state, indent=2, default=str))
-
-    async def _maybe_generate_docs(self, new_insights_count: int):
-        """Check if we should generate documentation based on activity.
-
-        Triggers report generation when:
-        - 5+ new insights captured in a session (significant session)
-        - 20+ total extractions since last report
-        - 6+ hours since last report
-        """
-        try:
-            import report_generator
-
-            last_report = self.state.get("last_report_time")
-            extractions_since_report = self.state.get("extractions_since_report", 0) + 1
-            self.state["extractions_since_report"] = extractions_since_report
-
-            should_generate = False
-            reason = ""
-
-            # Significant session (5+ insights at once)
-            if new_insights_count >= 5:
-                should_generate = True
-                reason = f"Significant session ({new_insights_count} insights)"
-
-            # Activity threshold
-            elif extractions_since_report >= 20:
-                should_generate = True
-                reason = f"Activity threshold ({extractions_since_report} extractions)"
-
-            # Time-based (6 hours)
-            elif last_report:
-                try:
-                    last_dt = datetime.fromisoformat(last_report)
-                    hours_since = (datetime.now() - last_dt).total_seconds() / 3600
-                    if hours_since >= 6:
-                        should_generate = True
-                        reason = f"Scheduled ({hours_since:.1f}h since last report)"
-                except (ValueError, TypeError):
-                    pass
-            else:
-                # No previous report - generate first one after some activity
-                if extractions_since_report >= 3:
-                    should_generate = True
-                    reason = "Initial report"
-
-            if should_generate:
-                log(f"[AutoDocs] Generating documentation... Reason: {reason}")
-
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                reports_dir = STATE_DIR / "reports"
-                reports_dir.mkdir(parents=True, exist_ok=True)
-
-                # Import Linear client for document storage
-                try:
-                    import linear_client
-                    linear_available = bool(os.environ.get("LINEAR_API_KEY"))
-                except ImportError:
-                    linear_available = False
-
-                # Generate FAQ from learnings
-                try:
-                    faq = await report_generator.generate_faq_from_solved(days=30)
-                    faq_path = reports_dir / f"auto_faq_{timestamp}.md"
-                    faq_path.write_text(faq)
-                    log(f"[AutoDocs] Generated FAQ: {faq_path.name}")
-
-                    # Store in Linear Docs
-                    if linear_available:
-                        doc = await linear_client.create_or_update_document(
-                            title="Flow Guardian FAQ",
-                            content=faq
-                        )
-                        if doc:
-                            log(f"[AutoDocs] Stored FAQ in Linear: {doc.get('url', doc.get('id'))}")
-                except Exception as e:
-                    log(f"[AutoDocs] FAQ generation failed: {e}", "WARN")
-
-                # Generate weekly summary
-                try:
-                    summary = await report_generator.generate_weekly_summary()
-                    summary_path = reports_dir / f"auto_weekly_{timestamp}.md"
-                    summary_path.write_text(summary)
-                    log(f"[AutoDocs] Generated weekly summary: {summary_path.name}")
-
-                    # Store in Linear Docs
-                    if linear_available:
-                        doc = await linear_client.create_or_update_document(
-                            title="Flow Guardian Weekly Summary",
-                            content=summary
-                        )
-                        if doc:
-                            log(f"[AutoDocs] Stored weekly summary in Linear: {doc.get('url', doc.get('id'))}")
-                except Exception as e:
-                    log(f"[AutoDocs] Weekly summary failed: {e}", "WARN")
-
-                # Update state
-                self.state["last_report_time"] = datetime.now().isoformat()
-                self.state["extractions_since_report"] = 0
-                self._save_state()
-
-        except ImportError:
-            pass  # report_generator not available
-        except Exception as e:
-            log(f"[AutoDocs] Error: {e}", "ERROR")
 
     async def extract_insights(self, conversation: str) -> list[dict]:
         """Use Cerebras to extract insights from conversation."""
@@ -883,9 +704,6 @@ CONVERSATION:
             log(f"Stored {len(insights)} insights from {session_id[:8]}")
             self.state["extractions_count"] = self.state.get("extractions_count", 0) + 1
 
-            # Check if we should generate documentation
-            await self._maybe_generate_docs(len(insights))
-
         session_state["last_extraction"] = datetime.now().isoformat()
         session_state["pending_messages"] = 0
         self.state["sessions"][session_id] = session_state
@@ -931,7 +749,7 @@ CONVERSATION:
 
 def create_api_app(service: FlowService):
     """Create FastAPI application."""
-    from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form, BackgroundTasks
+    from fastapi import FastAPI, HTTPException, Query
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import StreamingResponse
     from pydantic import BaseModel
@@ -970,218 +788,6 @@ def create_api_app(service: FlowService):
         query: str
 
     # Routes
-    # ---- Knowledge Graph Endpoints ----
-    @app.get("/graph")
-    async def get_knowledge_graph(
-        limit: int = Query(default=100, ge=1, le=500),
-        include_sessions: bool = Query(default=True),
-        include_learnings: bool = Query(default=True),
-    ):
-        """Get knowledge graph data with nodes and edges for visualization."""
-        nodes = []
-        edges = []
-        node_ids = set()
-        tag_nodes = {}  # Track tag nodes to create edges
-
-        # Get sessions
-        if include_sessions:
-            sessions = service.memory.list_sessions(limit=limit)
-            for session in sessions:
-                session_id = session.get("id", f"session_{session.get('timestamp', '')}")
-                if session_id not in node_ids:
-                    nodes.append({
-                        "id": session_id,
-                        "type": "session",
-                        "label": session.get("summary", "Untitled Session")[:50],
-                        "data": {
-                            "summary": session.get("summary", ""),
-                            "branch": session.get("branch", ""),
-                            "timestamp": session.get("timestamp", ""),
-                        }
-                    })
-                    node_ids.add(session_id)
-
-        # Get learnings
-        if include_learnings:
-            learnings = service.memory.get_all_learnings()[:limit]
-            for learning in learnings:
-                learning_id = learning.get("id", f"learning_{learning.get('timestamp', '')}")
-                if learning_id not in node_ids:
-                    insight = learning.get("insight") or learning.get("text", "")
-                    nodes.append({
-                        "id": learning_id,
-                        "type": "learning",
-                        "label": insight[:50] + ("..." if len(insight) > 50 else ""),
-                        "data": {
-                            "insight": insight,
-                            "tags": learning.get("tags", []),
-                            "timestamp": learning.get("timestamp", ""),
-                            "shared": learning.get("shared", False),
-                        }
-                    })
-                    node_ids.add(learning_id)
-
-                    # Create tag nodes and edges
-                    for tag in learning.get("tags", []):
-                        tag_id = f"tag_{tag}"
-                        if tag_id not in node_ids:
-                            nodes.append({
-                                "id": tag_id,
-                                "type": "tag",
-                                "label": f"#{tag}",
-                                "data": {"tag": tag}
-                            })
-                            node_ids.add(tag_id)
-                            tag_nodes[tag] = tag_id
-
-                        # Edge from learning to tag
-                        edges.append({
-                            "id": f"e_{learning_id}_{tag_id}",
-                            "source": learning_id,
-                            "target": tag_id,
-                            "type": "tagged",
-                        })
-
-        # Create edges between learnings with shared tags
-        learnings_by_tag = {}
-        if include_learnings:
-            for learning in learnings:  # Reuse learnings from earlier fetch
-                learning_id = learning.get("id", f"learning_{learning.get('timestamp', '')}")
-                for tag in learning.get("tags", []):
-                    if tag not in learnings_by_tag:
-                        learnings_by_tag[tag] = []
-                    learnings_by_tag[tag].append(learning_id)
-
-            # Create edges between learnings that share tags (limit to prevent too many edges)
-            edge_set = set()
-            for tag, learning_ids in learnings_by_tag.items():
-                if len(learning_ids) > 1 and len(learning_ids) <= 5:  # Only connect if reasonable number
-                    for i, lid1 in enumerate(learning_ids):
-                        for lid2 in learning_ids[i+1:]:
-                            edge_key = tuple(sorted([lid1, lid2]))
-                            if edge_key not in edge_set:
-                                edges.append({
-                                    "id": f"e_shared_{lid1}_{lid2}",
-                                    "source": lid1,
-                                    "target": lid2,
-                                    "type": "related",
-                                    "label": f"#{tag}",
-                                })
-                                edge_set.add(edge_key)
-
-        return {
-            "nodes": nodes,
-            "edges": edges,
-            "stats": {
-                "total_nodes": len(nodes),
-                "total_edges": len(edges),
-                "sessions": len([n for n in nodes if n["type"] == "session"]),
-                "learnings": len([n for n in nodes if n["type"] == "learning"]),
-                "tags": len([n for n in nodes if n["type"] == "tag"]),
-            }
-        }
-
-    @app.get("/suggestions")
-    async def get_suggestions(limit: int = Query(default=5, ge=1, le=10)):
-        """Get proactive AI suggestions based on recent activity."""
-        try:
-            suggestions = []
-
-            # Get recent learnings and sessions
-            recent_learnings = service.memory.get_all_learnings()[:20]
-            recent_sessions = service.memory.list_sessions(limit=10)
-
-            # If no data, return empty suggestions
-            if not recent_learnings and not recent_sessions:
-                return {"suggestions": [], "message": "No activity yet to generate suggestions"}
-
-            # Build context for Cerebras
-            context_parts = []
-
-            for learning in recent_learnings[:5]:
-                insight = learning.get("insight") or learning.get("text", "")
-                tags = learning.get("tags", [])
-                context_parts.append(f"- Learning: {insight[:200]} (tags: {', '.join(tags)})")
-
-            for session in recent_sessions[:3]:
-                summary = session.get("summary", "")
-                branch = session.get("branch", "")
-                context_parts.append(f"- Session on {branch}: {summary[:200]}")
-
-            context = "\n".join(context_parts)
-
-            # Generate suggestions using Cerebras
-            prompt = f"""Based on this developer's recent activity, generate {limit} proactive suggestions to help them.
-
-RECENT ACTIVITY:
-{context}
-
-Generate helpful suggestions like:
-- Connecting related concepts they learned
-- Reminding them of unfinished work
-- Suggesting they document patterns they keep using
-- Highlighting potential issues or blockers
-- Recommending they share useful learnings with the team
-
-Return a JSON array with objects containing:
-- "title": Short suggestion title (max 50 chars)
-- "description": Helpful explanation (max 150 chars)
-- "type": One of "connect", "remind", "document", "alert", "share"
-- "relevance": Score 1-10 (how relevant/useful)
-- "related_items": Array of related learning/session IDs if any
-
-Example:
-[{{"title": "Connect auth patterns", "description": "You learned about JWT and OAuth separately - consider documenting how they work together in your project", "type": "connect", "relevance": 8, "related_items": []}}]
-
-Return ONLY the JSON array."""
-
-            try:
-                response = service.cerebras.complete(
-                    prompt=prompt,
-                    system="You are a helpful AI assistant that provides proactive suggestions to developers based on their activity. Be concise and actionable.",
-                    json_mode=True,
-                    max_tokens=1000
-                )
-
-                # Parse response - extract JSON array
-                start = response.find('[')
-                end = response.rfind(']') + 1
-                if start >= 0 and end > start:
-                    parsed = json.loads(response[start:end])
-                    if isinstance(parsed, list):
-                        suggestions = parsed[:limit]
-            except Exception as e:
-                log(f"Suggestion generation error: {e}", "WARN")
-
-            # Fallback: generate basic suggestions if AI fails
-            if not suggestions:
-                if recent_learnings:
-                    suggestions.append({
-                        "title": "Review recent learnings",
-                        "description": f"You have {len(recent_learnings)} learnings. Consider organizing them with tags.",
-                        "type": "document",
-                        "relevance": 5,
-                        "related_items": []
-                    })
-                if recent_sessions:
-                    latest = recent_sessions[0]
-                    suggestions.append({
-                        "title": "Continue your work",
-                        "description": f"Your last session was about: {latest.get('summary', 'Unknown')[:100]}",
-                        "type": "remind",
-                        "relevance": 7,
-                        "related_items": [latest.get("id")]
-                    })
-
-            return {
-                "suggestions": suggestions,
-                "generated_at": datetime.now().isoformat(),
-            }
-
-        except Exception as e:
-            log(f"Suggestions endpoint error: {e}", "ERROR")
-            return {"suggestions": [], "error": str(e)}
-
     @app.get("/health")
     async def health():
         return {"status": "ok", "service": "flow-guardian"}
@@ -1191,44 +797,25 @@ Return ONLY the JSON array."""
         return await service.get_status()
 
     @app.post("/capture")
-    async def capture(req: CaptureRequest, background_tasks: BackgroundTasks):
-        result = await service.capture_context(
+    async def capture(req: CaptureRequest):
+        return await service.capture_context(
             summary=req.summary,
             decisions=req.decisions,
             next_steps=req.next_steps,
             blockers=req.blockers,
         )
 
-        # Agentically create Linear issues for blockers
-        if req.blockers and len(req.blockers) > 0:
-            background_tasks.add_task(
-                create_linear_issues_for_blockers,
-                blockers=req.blockers,
-                summary=req.summary or ""
-            )
-
-        return result
-
     @app.post("/recall")
     async def recall(req: RecallRequest):
         return await service.recall_context(req.query, local_only=req.local_only)
 
     @app.post("/learn")
-    async def learn(req: LearnRequest, background_tasks: BackgroundTasks):
-        result = await service.store_learning(
+    async def learn(req: LearnRequest):
+        return await service.store_learning(
             insight=req.insight,
             tags=req.tags,
             share_with_team=req.share_with_team,
         )
-
-        # Check if this learning might warrant a Linear issue (bugs, errors, etc.)
-        background_tasks.add_task(
-            process_learning_for_linear,
-            insight=req.insight,
-            tags=req.tags or []
-        )
-
-        return result
 
     @app.post("/team")
     async def team(req: TeamRequest):
@@ -1238,20 +825,7 @@ Return ONLY the JSON array."""
     class AnalyzeRequest(BaseModel):
         conversation: str
 
-    @app.post("/analyze-for-linear")
-    async def analyze_for_linear(req: AnalyzeRequest, background_tasks: BackgroundTasks):
-        """Analyze a chat conversation and create Linear issues if warranted.
-
-        This is called by the web chat after each conversation to intelligently
-        decide if issues should be created.
-        """
-        background_tasks.add_task(
-            analyze_conversation_for_issues,
-            conversation=req.conversation
-        )
-        return {"status": "analyzing", "message": "Conversation queued for analysis"}
-
-    # ---- Web UI Endpoints ----
+    # ---- API Endpoints ----
 
     @app.get("/sessions")
     async def list_sessions(
@@ -1341,292 +915,7 @@ Return ONLY the JSON array."""
             "top_tags": [{"tag": tag, "count": count} for tag, count in top_tags],
         }
 
-    @app.post("/documents")
-    async def upload_document(
-        file: UploadFile = File(...),
-        note: str = Form(default=""),
-        tags: str = Form(default=""),
-    ):
-        """Upload and process a document (PDF supported)."""
-        import uuid
-
-        # Parse tags (comma-separated string)
-        tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
-
-        # Read file content
-        content = await file.read()
-        filename = file.filename or "unknown"
-
-        # Extract text based on file type
-        extracted_text = ""
-        if filename.lower().endswith(".pdf"):
-            try:
-                import fitz  # PyMuPDF
-
-                # Open PDF from bytes
-                doc = fitz.open(stream=content, filetype="pdf")
-                text_parts = []
-                for page in doc:
-                    text_parts.append(page.get_text())
-                doc.close()
-                extracted_text = "\n".join(text_parts)
-            except ImportError:
-                raise HTTPException(
-                    status_code=500,
-                    detail="PyMuPDF (fitz) not installed. Install with: pip install pymupdf"
-                )
-            except Exception as e:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Failed to extract text from PDF: {str(e)}"
-                )
-        else:
-            # For non-PDF files, try to decode as text
-            try:
-                extracted_text = content.decode("utf-8")
-            except UnicodeDecodeError:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Unsupported file format. Only PDF and text files are supported."
-                )
-
-        # Generate a summary (first 500 chars or use note)
-        summary = note if note else extracted_text[:500].strip()
-        if len(summary) > 500:
-            summary = summary[:497] + "..."
-
-        # Generate document ID
-        doc_id = f"doc_{uuid.uuid4().hex[:12]}"
-
-        # Store to local vector memory if available
-        vector_stored = False
-        if service.local_memory_available():
-            try:
-                tag_str = " ".join(f"#{t}" for t in tag_list)
-                content_to_store = f"**Document**: {filename}\n{tag_str}\n\n{note}\n\n---\n\n{extracted_text[:10000]}"
-                await service.local_memory.store_message(
-                    content=content_to_store,
-                    namespace="personal",
-                    content_type="document",
-                    metadata={
-                        "filename": filename,
-                        "doc_id": doc_id,
-                        "tags": tag_list,
-                    }
-                )
-                vector_stored = True
-                log(f"Document stored to local vector memory: {filename}", "DEBUG")
-            except Exception as e:
-                log(f"Failed to store document to vector memory: {e}", "WARN")
-
-        # Store to Backboard if available (and not using local memory exclusively)
-        if service.backboard_available() and not service.use_local_memory():
-            thread_id = os.environ.get("BACKBOARD_PERSONAL_THREAD_ID")
-            if thread_id:
-                tag_str = " ".join(f"#{t}" for t in tag_list)
-                content_to_store = f"**Document**: {filename}\n{tag_str}\n\n{note}\n\n---\n\n{extracted_text[:10000]}"
-                try:
-                    await service.backboard.store_message(thread_id, content_to_store, {
-                        "type": "document",
-                        "filename": filename,
-                        "doc_id": doc_id,
-                        "tags": tag_list,
-                    })
-                except Exception as e:
-                    log(f"Failed to store document to Backboard: {e}", "WARN")
-
-        # Also store as a learning for local search
-        service.memory.save_learning({
-            "id": doc_id,
-            "insight": f"Document: {filename} - {summary}",
-            "text": extracted_text[:5000],  # Store first 5000 chars for search
-            "tags": tag_list + ["document"],
-            "filename": filename,
-        })
-
-        return {
-            "id": doc_id,
-            "filename": filename,
-            "summary": summary,
-            "tags": tag_list,
-            "vector_stored": vector_stored,
-        }
-
     return app
-
-
-# ============ LINEAR AGENT INTEGRATION ============
-
-async def create_linear_issues_for_blockers(blockers: list[str], summary: str):
-    """Background task to analyze blockers and create Linear issues if needed.
-
-    Uses Cerebras to analyze blockers and determine if they should become
-    Linear issues, then creates them automatically.
-    """
-    try:
-        import linear_agent
-
-        # Build content for analysis
-        content = f"Session: {summary}\n\nBlockers:\n"
-        for blocker in blockers:
-            content += f"- {blocker}\n"
-
-        log(f"[LinearAgent] Analyzing {len(blockers)} blockers for potential issues...")
-
-        # Use Cerebras to analyze and identify actionable issues
-        issues_to_create = await linear_agent.analyze_for_issues(content)
-
-        if not issues_to_create:
-            log("[LinearAgent] No actionable issues identified from blockers")
-            return
-
-        log(f"[LinearAgent] Creating {len(issues_to_create)} Linear issues...")
-
-        # Create issues in Linear
-        for issue in issues_to_create:
-            created = await linear_agent.create_linear_issue(
-                title=issue.get("title", "Untitled"),
-                description=issue.get("description", ""),
-                issue_type=issue.get("type", "blocker"),
-                priority=issue.get("priority", 2)  # Default high priority for blockers
-            )
-            if created:
-                log(f"[LinearAgent] Created issue: {created.get('identifier')} - {issue.get('title')}")
-
-    except ImportError:
-        log("[LinearAgent] linear_agent module not available", "WARN")
-    except Exception as e:
-        log(f"[LinearAgent] Error creating issues: {e}", "ERROR")
-
-
-async def process_learning_for_linear(insight: str, tags: list[str]):
-    """Background task to check if a learning should create a Linear issue.
-
-    Only processes learnings that look like bugs or actionable issues.
-    """
-    try:
-        import linear_agent
-
-        # Quick check - only process if it looks like a bug or issue
-        bug_indicators = ["bug", "error", "fix", "broken", "issue", "problem", "fail", "crash", "exception"]
-        insight_lower = insight.lower()
-        tags_lower = [t.lower() for t in tags]
-
-        is_potential_issue = (
-            any(ind in insight_lower for ind in bug_indicators) or
-            any(ind in tag for tag in tags_lower for ind in bug_indicators)
-        )
-
-        if not is_potential_issue:
-            return  # Skip - not a bug-related learning
-
-        log(f"[LinearAgent] Processing learning for potential Linear issue...")
-
-        # Analyze with Cerebras
-        content = f"Learning: {insight}\nTags: {', '.join(tags)}"
-        issues = await linear_agent.analyze_for_issues(content)
-
-        if issues:
-            issue = issues[0]  # Take first suggested issue
-            created = await linear_agent.create_linear_issue(
-                title=issue.get("title", "Untitled"),
-                description=issue.get("description", ""),
-                issue_type=issue.get("type", "bug"),
-                priority=issue.get("priority", 2)
-            )
-            if created:
-                log(f"[LinearAgent] Created issue from learning: {created.get('identifier')}")
-
-    except ImportError:
-        pass  # linear_agent not available, silently skip
-    except Exception as e:
-        log(f"[LinearAgent] Error processing learning: {e}", "ERROR")
-
-
-async def analyze_conversation_for_issues(conversation: str):
-    """Analyze a chat conversation and create Linear issues if warranted.
-
-    Uses Cerebras to intelligently determine if the conversation contains
-    actionable items that should become Linear issues.
-    """
-    try:
-        import linear_agent
-        import cerebras_client
-
-        log("[LinearAgent] Analyzing conversation for potential issues...")
-
-        # Use Cerebras to analyze the conversation
-        analysis_prompt = f"""Analyze this chat conversation and determine if any Linear issues should be created.
-
-CONVERSATION:
-{conversation[:8000]}
-
-Look for:
-1. BUGS - Errors, failures, broken functionality mentioned
-2. BLOCKERS - Things preventing progress
-3. FEATURE REQUESTS - New functionality discussed
-4. ACTION ITEMS - Tasks that need to be done
-
-For each potential issue, provide:
-- title: Clear, concise title
-- description: What needs to be done
-- type: "bug", "blocker", "feature", or "task"
-- priority: 1 (urgent), 2 (high), 3 (medium), 4 (low)
-- reason: Why this should be a Linear issue
-
-IMPORTANT: Only create issues for ACTIONABLE items. Don't create issues for:
-- General questions or discussions
-- Completed work
-- Things already resolved in the conversation
-
-Return a JSON array. If nothing warrants an issue, return [].
-
-Example:
-[{{"title": "Fix Stripe webhook silent failures", "description": "Webhook fails silently with Apple Pay - no error logs", "type": "bug", "priority": 1, "reason": "Critical payment issue affecting revenue"}}]
-
-Respond with ONLY the JSON array."""
-
-        response = await cerebras_client.quick_answer(
-            analysis_prompt,
-            system="You are a project manager analyzing conversations to identify actionable work items. Be selective - only flag truly important items."
-        )
-
-        # Parse response
-        import json
-        try:
-            start = response.find('[')
-            end = response.rfind(']') + 1
-            if start >= 0 and end > start:
-                issues = json.loads(response[start:end])
-                if not isinstance(issues, list):
-                    issues = []
-            else:
-                issues = []
-        except json.JSONDecodeError:
-            issues = []
-
-        if not issues:
-            log("[LinearAgent] No actionable issues found in conversation")
-            return
-
-        log(f"[LinearAgent] Found {len(issues)} potential issues in conversation")
-
-        # Create issues in Linear
-        for issue in issues:
-            log(f"[LinearAgent] Creating issue: {issue.get('title')} (reason: {issue.get('reason', 'N/A')})")
-            created = await linear_agent.create_linear_issue(
-                title=issue.get("title", "Untitled"),
-                description=f"{issue.get('description', '')}\n\n---\n_Reason: {issue.get('reason', 'Identified from chat conversation')}_",
-                issue_type=issue.get("type", "task"),
-                priority=issue.get("priority", 3)
-            )
-            if created:
-                log(f"[LinearAgent] Created: {created.get('identifier')} - {issue.get('title')}")
-
-    except ImportError as e:
-        log(f"[LinearAgent] Module not available: {e}", "WARN")
-    except Exception as e:
-        log(f"[LinearAgent] Error analyzing conversation: {e}", "ERROR")
 
 
 async def run_api(service: FlowService, port: int = 8090):
@@ -1705,37 +994,6 @@ def create_mcp_server(service: FlowService):
                 description="Get Flow Guardian status",
                 inputSchema={"type": "object", "properties": {}}
             ),
-            # Linear tools
-            Tool(
-                name="linear_status",
-                description="Check Linear connection status and list teams",
-                inputSchema={"type": "object", "properties": {}}
-            ),
-            Tool(
-                name="linear_issues",
-                description="List or search Linear issues",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "days": {"type": "integer", "description": "Number of days to look back (default: 30)", "default": 30},
-                        "limit": {"type": "integer", "description": "Maximum issues to return (default: 20)", "default": 20},
-                        "bugs_only": {"type": "boolean", "description": "Only return bugs (default: false)", "default": False},
-                    },
-                }
-            ),
-            Tool(
-                name="linear_create_issue",
-                description="Create a new issue in Linear",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "title": {"type": "string", "description": "Issue title"},
-                        "description": {"type": "string", "description": "Issue description"},
-                        "priority": {"type": "integer", "description": "Priority: 1=urgent, 2=high, 3=medium, 4=low", "default": 3},
-                    },
-                    "required": ["title"]
-                }
-            ),
         ]
 
     @server.call_tool()
@@ -1794,73 +1052,13 @@ def create_mcp_server(service: FlowService):
             elif name == "flow_status":
                 result = await service.get_status()
                 lines = [
-                    f"Backboard: {'Connected' if result['backboard_connected'] else 'Not configured'}",
+                    f"Local memory: {'Available' if result.get('local_memory_available') else 'Not available'}",
                     f"Team: {'Available' if result['team_available'] else 'Not configured'}",
                 ]
                 if result.get("last_capture"):
                     lines.append(f"Last capture: {result['last_capture']}")
                     lines.append(f"Summary: {result.get('last_summary', 'N/A')}")
                 return [TextContent(type="text", text="\n".join(lines))]
-
-            # Linear tools
-            elif name == "linear_status":
-                import linear_client
-                result = await linear_client.test_connection()
-                if result.get("connected"):
-                    lines = [
-                        f"Linear: Connected",
-                        f"User: {result.get('user', 'N/A')} ({result.get('email', 'N/A')})",
-                        f"Teams:"
-                    ]
-                    for team in result.get("teams", []):
-                        lines.append(f"  - {team['name']} ({team['key']}): {team['issues']} issues")
-                    return [TextContent(type="text", text="\n".join(lines))]
-                else:
-                    return [TextContent(type="text", text=f"Linear: Not connected - {result.get('error', 'Unknown error')}")]
-
-            elif name == "linear_issues":
-                import linear_client
-                days = arguments.get("days", 30)
-                limit = arguments.get("limit", 20)
-                bugs_only = arguments.get("bugs_only", False)
-
-                if bugs_only:
-                    issues = await linear_client.get_recent_bugs(days=days, limit=limit)
-                else:
-                    issues = await linear_client.get_all_issues(days=days, limit=limit)
-
-                if not issues:
-                    return [TextContent(type="text", text="No issues found")]
-
-                lines = [f"Found {len(issues)} issues (last {days} days):"]
-                for issue in issues[:limit]:
-                    state = issue.get("state", {}).get("name", "?")
-                    priority = issue.get("priorityLabel", "None")
-                    assignee = issue.get("assignee", {})
-                    assignee_name = assignee.get("name", "Unassigned") if assignee else "Unassigned"
-                    lines.append(f"  [{state}] {issue['identifier']}: {issue['title']}")
-                    lines.append(f"      Priority: {priority} | Assignee: {assignee_name}")
-                return [TextContent(type="text", text="\n".join(lines))]
-
-            elif name == "linear_create_issue":
-                import linear_agent
-                title = arguments.get("title", "")
-                description = arguments.get("description", "")
-                priority = arguments.get("priority", 3)
-
-                if not title:
-                    return [TextContent(type="text", text="Error: title is required")]
-
-                issue = await linear_agent.create_linear_issue(
-                    title=title,
-                    description=description,
-                    priority=priority
-                )
-
-                if issue:
-                    return [TextContent(type="text", text=f"Created issue: {issue.get('identifier')} - {issue.get('title')}\nURL: {issue.get('url', 'N/A')}")]
-                else:
-                    return [TextContent(type="text", text="Failed to create issue. Check LINEAR_API_KEY is set.")]
 
             else:
                 return [TextContent(type="text", text=f"Unknown tool: {name}")]

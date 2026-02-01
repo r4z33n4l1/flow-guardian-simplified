@@ -13,7 +13,6 @@ import pytest
 
 import handoff
 import inject
-import backboard_client
 import memory
 
 
@@ -104,9 +103,8 @@ class TestSaveAndRestoreFlow:
     @pytest.mark.asyncio
     async def test_full_save_restore_cycle(self, mock_project, monkeypatch):
         """Test full cycle: save state, simulate restart, inject context."""
-        # Skip Backboard calls
+        # Skip Backboard calls (no longer used)
         monkeypatch.delenv("BACKBOARD_PERSONAL_THREAD_ID", raising=False)
-        monkeypatch.setattr(backboard_client, 'API_KEY', None)
 
         # Mock git functions to avoid actual git calls
         monkeypatch.setattr(inject, 'get_current_branch', lambda: "feature/test")
@@ -143,9 +141,8 @@ class TestSaveAndRestoreFlow:
     @pytest.mark.asyncio
     async def test_inject_generates_context_string(self, mock_project, monkeypatch):
         """Test that inject generates proper context string."""
-        # Skip Backboard
+        # Skip Backboard (no longer used)
         monkeypatch.delenv("BACKBOARD_PERSONAL_THREAD_ID", raising=False)
-        monkeypatch.setattr(backboard_client, 'API_KEY', None)
 
         # Mock local memory to return empty (no stored learnings)
         monkeypatch.setattr(memory, 'search_learnings', lambda **kwargs: [])

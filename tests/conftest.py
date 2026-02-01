@@ -8,39 +8,9 @@ from services.flow_service import FlowService
 
 @pytest.fixture
 def mock_config():
-    """Mock configuration with Backboard.io configured."""
+    """Mock configuration for local-only mode."""
     return FlowConfig(
-        backboard_api_key="test-api-key",
-        backboard_base_url="https://test.backboard.io/api",
         cerebras_api_key="test-cerebras-key",
-        personal_thread_id="test-personal-thread",
-        team_thread_id="test-team-thread",
-        user="test-user",
-    )
-
-
-@pytest.fixture
-def mock_config_no_backboard():
-    """Config without Backboard.io configured."""
-    return FlowConfig(
-        backboard_api_key=None,
-        backboard_base_url="https://test.backboard.io/api",
-        cerebras_api_key="test-cerebras-key",
-        personal_thread_id=None,
-        team_thread_id=None,
-        user="test-user",
-    )
-
-
-@pytest.fixture
-def mock_config_no_team():
-    """Config with Backboard but no team configured."""
-    return FlowConfig(
-        backboard_api_key="test-api-key",
-        backboard_base_url="https://test.backboard.io/api",
-        cerebras_api_key="test-cerebras-key",
-        personal_thread_id="test-personal-thread",
-        team_thread_id=None,
         user="test-user",
     )
 
@@ -51,17 +21,6 @@ def mock_service(mock_config):
     return FlowService(mock_config)
 
 
-@pytest.fixture
-def mock_backboard_client():
-    """Mock backboard_client module."""
-    with patch("services.flow_service.backboard_client") as mock:
-        mock.store_session = AsyncMock(return_value={"id": "msg-123"})
-        mock.recall = AsyncMock(return_value="Previous context: working on auth")
-        mock.store_learning = AsyncMock(return_value={"id": "learning-123"})
-        mock.store_team_learning = AsyncMock(return_value={"id": "team-learning-123"})
-        mock.query_team_memory = AsyncMock(return_value="Team insight: use JWT")
-        mock.BackboardError = Exception
-        yield mock
 
 
 @pytest.fixture
