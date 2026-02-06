@@ -119,7 +119,7 @@ def extract_python_structure(content: str, filename: str = "file.py", level: str
                     lines.append(f"  {first_line}")
         lines.append("")
 
-    # For L3, add call graph hints
+    # For L3, add call graph hints and complexity metrics
     if level == "L3":
         calls = _extract_function_calls(tree)
         if calls:
@@ -127,6 +127,28 @@ def extract_python_structure(content: str, filename: str = "file.py", level: str
             for caller, callees in list(calls.items())[:5]:
                 lines.append(f"- {caller} -> {', '.join(callees[:5])}")
             lines.append("")
+
+        # Complexity metrics per function
+        all_funcs = [node for node in ast.walk(tree)
+                     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))]
+        complex_funcs = []
+        for func in all_funcs:
+            cc = _compute_complexity(func)
+            if cc > 3:  # Only show non-trivial complexity
+                complex_funcs.append((func.name, cc))
+        if complex_funcs:
+            complex_funcs.sort(key=lambda x: x[1], reverse=True)
+            lines.append("**Complexity (cyclomatic):**")
+            for name, cc in complex_funcs[:8]:
+                label = "⚠️ high" if cc > 10 else ""
+                lines.append(f"- {name}: {cc} {label}".rstrip())
+            lines.append("")
+
+        # File-level metrics
+        metrics = _compute_file_metrics(content, tree)
+        lines.append(f"**Metrics:** {metrics['sloc']} SLOC, {metrics['num_functions']} functions, "
+                     f"{metrics['num_classes']} classes, avg complexity {metrics['avg_complexity']}")
+        lines.append("")
 
     return '\n'.join(lines)
 
@@ -207,6 +229,68 @@ def _extract_function_calls(tree) -> dict:
     return calls
 
 
+def _compute_complexity(node) -> int:
+    """
+    Compute cyclomatic complexity for a function node.
+
+    Counts decision points: if, elif, for, while, except, with, assert,
+    boolean operators (and, or), ternary (IfExp).
+
+    Args:
+        node: AST function node
+
+    Returns:
+        Cyclomatic complexity score (1 = linear)
+    """
+    complexity = 1  # Base complexity
+    for child in ast.walk(node):
+        if isinstance(child, (ast.If, ast.IfExp)):
+            complexity += 1
+        elif isinstance(child, (ast.For, ast.AsyncFor, ast.While)):
+            complexity += 1
+        elif isinstance(child, ast.ExceptHandler):
+            complexity += 1
+        elif isinstance(child, (ast.With, ast.AsyncWith)):
+            complexity += 1
+        elif isinstance(child, ast.Assert):
+            complexity += 1
+        elif isinstance(child, ast.BoolOp):
+            # and/or add branches
+            complexity += len(child.values) - 1
+    return complexity
+
+
+def _compute_file_metrics(content: str, tree) -> dict:
+    """
+    Compute file-level metrics.
+
+    Args:
+        content: Source code text
+        tree: Parsed AST
+
+    Returns:
+        Dictionary with loc, sloc, num_functions, num_classes, avg_complexity
+    """
+    lines = content.split('\n')
+    loc = len(lines)
+    sloc = sum(1 for line in lines if line.strip() and not line.strip().startswith('#'))
+
+    functions = [n for n in ast.walk(tree)
+                 if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    classes = [n for n in ast.iter_child_nodes(tree) if isinstance(n, ast.ClassDef)]
+
+    complexities = [_compute_complexity(f) for f in functions]
+    avg_complexity = sum(complexities) / len(complexities) if complexities else 0
+
+    return {
+        "loc": loc,
+        "sloc": sloc,
+        "num_functions": len(functions),
+        "num_classes": len(classes),
+        "avg_complexity": round(avg_complexity, 1),
+    }
+
+
 def generate_code_tldr(content: str, filename: str, level: str = "L1") -> str:
     """
     Generate TLDR for code files using AST parsing.
@@ -214,7 +298,7 @@ def generate_code_tldr(content: str, filename: str, level: str = "L1") -> str:
     Args:
         content: File content
         filename: Filename (used to detect language)
-        level: L1 (signatures), L2 (+docstrings), L3 (+call graph)
+        level: L1 (signatures), L2 (+docstrings), L3 (+call graph + complexity)
 
     Returns:
         Structured code summary

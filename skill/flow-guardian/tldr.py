@@ -208,6 +208,9 @@ def summarize_handoff(handoff: dict, level: str = "L1") -> str:
     """
     Create TLDR of handoff state (no LLM needed — pure formatting).
 
+    Supports both core fields (goal, now, status) and extended fields
+    (done_this_session, decisions, findings, worked, failed, etc.).
+
     Args:
         handoff: Handoff dictionary with goal, now, hypothesis, files, etc.
         level: TLDR level (L0, L1, L2, L3)
@@ -232,17 +235,64 @@ def summarize_handoff(handoff: dict, level: str = "L1") -> str:
     if now:
         parts.append(f"Current focus: {now}")
 
-    hypothesis = handoff.get("hypothesis")
-    if hypothesis and level in ("L2", "L3"):
-        parts.append(f"Hypothesis: {hypothesis}")
+    status = handoff.get("status")
+    if status:
+        parts.append(f"Status: {status}")
 
     outcome = handoff.get("outcome")
-    if outcome and level in ("L2", "L3"):
+    if outcome:
         parts.append(f"Outcome: {outcome}")
 
     branch = handoff.get("branch")
     if branch:
         parts.append(f"Branch: {branch}")
+
+    hypothesis = handoff.get("hypothesis")
+    if hypothesis and level in ("L2", "L3"):
+        parts.append(f"Hypothesis: {hypothesis}")
+
+    test = handoff.get("test")
+    if test and level in ("L2", "L3"):
+        parts.append(f"Verify: {test}")
+
+    # Extended fields for L2/L3
+    if level in ("L2", "L3"):
+        done = handoff.get("done_this_session", [])
+        if done:
+            task_strs = []
+            for item in done[:5]:
+                if isinstance(item, dict):
+                    task_strs.append(item.get("task", str(item)))
+                else:
+                    task_strs.append(str(item))
+            parts.append(f"Done: {'; '.join(task_strs)}")
+
+        decisions = handoff.get("decisions", [])
+        if decisions:
+            dec_strs = []
+            for d in decisions[:3]:
+                if isinstance(d, dict):
+                    for k, v in d.items():
+                        dec_strs.append(f"{k}: {v}")
+                else:
+                    dec_strs.append(str(d))
+            parts.append(f"Decisions: {'; '.join(dec_strs)}")
+
+        findings = handoff.get("findings", [])
+        if findings:
+            parts.append(f"Findings: {'; '.join(str(f) for f in findings[:3])}")
+
+        worked = handoff.get("worked", [])
+        if worked:
+            parts.append(f"Worked: {'; '.join(str(w) for w in worked[:3])}")
+
+        failed = handoff.get("failed", [])
+        if failed:
+            parts.append(f"Failed: {'; '.join(str(f) for f in failed[:3])}")
+
+        blockers = handoff.get("blockers", [])
+        if blockers:
+            parts.append(f"Blockers: {'; '.join(str(b) for b in blockers[:3])}")
 
     files = handoff.get("files", [])
     if files:
@@ -253,9 +303,9 @@ def summarize_handoff(handoff: dict, level: str = "L1") -> str:
         else:
             parts.append(f"Files: {', '.join(files)}")
 
-    status = handoff.get("status")
-    if status:
-        parts.append(f"Status: {status}")
+    next_steps = handoff.get("next", [])
+    if next_steps and level in ("L2", "L3"):
+        parts.append(f"Next: {'; '.join(str(n) for n in next_steps[:3])}")
 
     return ". ".join(parts)
 

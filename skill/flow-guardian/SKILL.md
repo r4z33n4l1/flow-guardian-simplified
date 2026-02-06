@@ -21,9 +21,9 @@ metadata:
 
 ## What This Skill Does
 
-1. **Structured Handoffs** — Save/restore session state as goal + status + hypothesis + files + branch
+1. **Structured Handoffs** — Save/restore session state as goal + status + hypothesis + outcome + decisions + learnings
 2. **TLDR Compression** — Compress files and context to ~3% of original size while preserving key information
-3. **Code-Aware TLDR** — AST-based extraction for Python/JS/TS that preserves exact function signatures and class structures
+3. **Code-Aware TLDR** — AST-based extraction for Python/JS/TS that preserves exact function signatures, class structures, and complexity metrics
 4. **Git Context** — Capture current branch, modified files, recent commits
 5. **Learning Extraction** — Identify and store learnings, decisions, and insights from sessions
 
@@ -38,22 +38,58 @@ python3 ~/.openclaw/skills/flow-guardian/handoff.py save \
   --status in_progress \
   --now "Debugging token expiry" \
   --hypothesis "Off-by-one in timestamp comparison" \
+  --outcome PARTIAL_PLUS \
   --files "src/auth.py,tests/test_auth.py" \
-  --branch "fix/jwt-expiry"
+  --branch "fix/jwt-expiry" \
+  --test "pytest tests/test_auth.py" \
+  --done "Identified root cause" --done-files "src/auth.py" \
+  --done "Added logging" --done-files "src/logger.py" \
+  --decision "use_jwt=Better for stateless APIs" \
+  --finding "Token TTL was correct, timezone was wrong" \
+  --worked "TDD approach" \
+  --failed-approach "Mocking entire DB layer" \
+  --blocker "Need Redis 7+ for pub/sub" \
+  --next-step "Write integration tests" \
+  --next-step "Update docs"
 ```
 
 **Load handoff** — Call at session start to restore context:
 ```bash
 python3 ~/.openclaw/skills/flow-guardian/handoff.py load
+python3 ~/.openclaw/skills/flow-guardian/handoff.py load --json  # JSON output
 ```
-Output: YAML with goal, status, now, hypothesis, files, branch, timestamp.
+Output: YAML with goal, status, now, outcome, hypothesis, files, branch, decisions, findings, worked, failed, next, timestamp.
 
-**Update handoff** — Partially update current handoff:
+**Update handoff** — Partially update current handoff (list fields append by default):
 ```bash
 python3 ~/.openclaw/skills/flow-guardian/handoff.py update \
   --now "Fix verified, writing tests" \
-  --status completed
+  --status completed \
+  --outcome SUCCEEDED \
+  --finding "Timezone must be UTC everywhere"
 ```
+
+Use `--replace` to overwrite list fields instead of appending.
+
+### Handoff Fields Reference
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `goal` | Yes | What this session is about (shown in statusline) |
+| `status` | Yes | `in_progress`, `completed`, `blocked` |
+| `now` | Yes | Current focus / what next session does first (shown in statusline) |
+| `outcome` | No | `SUCCEEDED`, `PARTIAL_PLUS`, `PARTIAL_MINUS`, `FAILED` |
+| `hypothesis` | No | Current working theory |
+| `test` | No | Command to verify work (e.g. `pytest tests/`) |
+| `files` | No | Files being worked on |
+| `branch` | No | Git branch |
+| `done_this_session` | No | Tasks completed (with file refs) |
+| `decisions` | No | Key decisions with rationale |
+| `findings` | No | Learnings and discoveries |
+| `worked` | No | Approaches that worked (repeat these) |
+| `failed` | No | Approaches that failed (avoid these) |
+| `blockers` | No | Blocking issues |
+| `next` | No | Ordered action items for next session |
 
 ### TLDR Compression
 
@@ -80,10 +116,16 @@ python3 ~/.openclaw/skills/flow-guardian/tldr_code.py \
 ```
 Output: Imports, constants, classes with methods, function signatures, docstrings.
 
+**Level details for code TLDR:**
+- **L1**: Function/class signatures, imports, constants
+- **L2**: + Brief docstrings
+- **L3**: + Internal call graph + cyclomatic complexity metrics + file metrics (SLOC, function count)
+
 ### Git Context
 
 ```bash
 python3 ~/.openclaw/skills/flow-guardian/git_capture.py [--repo /path/to/repo]
+python3 ~/.openclaw/skills/flow-guardian/git_capture.py --compact  # Minimal JSON
 ```
 Output: JSON with branch, modified files, recent commits, diff summary.
 
@@ -92,7 +134,7 @@ Output: JSON with branch, modified files, recent commits, diff summary.
 - **Session start**: Load handoff → inject context (automated by hook)
 - **Before reading large files**: Use code TLDR to extract structure instead of reading raw content
 - **Session end**: Save handoff with current state (automated by hook)
-- **After solving a problem**: Extract the learning for future reference
+- **After solving a problem**: Save decisions, findings, worked/failed for future reference
 - **Before context compaction**: Save handoff to preserve state across compaction
 
 ## Integration with Memory
