@@ -399,6 +399,34 @@ def _extract_generic_structure(content: str, filename: str, level: str) -> str:
     return '\n'.join(lines)
 
 
+def _estimate_tokens(text: str) -> int:
+    """Rough token estimate (~4 chars per token for code)."""
+    return len(text) // 4
+
+
+def format_stats(raw_content: str, tldr_result: str, filename: str, level: str) -> str:
+    """Format token count comparison between raw and compressed."""
+    raw_tokens = _estimate_tokens(raw_content)
+    compressed_tokens = _estimate_tokens(tldr_result)
+    raw_lines = len(raw_content.splitlines())
+    compressed_lines = len(tldr_result.splitlines())
+
+    if raw_tokens > 0:
+        ratio = compressed_tokens / raw_tokens
+        savings = (1 - ratio) * 100
+    else:
+        ratio = 0
+        savings = 0
+
+    lines = [
+        f"📊 TLDR Stats for {filename} (level {level}):",
+        f"   Raw:        {raw_tokens:,} tokens ({raw_lines} lines)",
+        f"   Compressed: {compressed_tokens:,} tokens ({compressed_lines} lines)",
+        f"   Savings:    {savings:.0f}% reduction ({ratio:.2f}x ratio)",
+    ]
+    return "\n".join(lines)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Code-aware TLDR using AST parsing. Extracts code structure without LLM calls."
@@ -412,6 +440,11 @@ def main():
         choices=["L1", "L2", "L3"],
         default="L1",
         help="Detail level: L1=signatures, L2=+docstrings, L3=+call graph (default: L1)"
+    )
+    parser.add_argument(
+        "--stats", "-s",
+        action="store_true",
+        help="Show token count comparison (raw vs compressed)"
     )
 
     args = parser.parse_args()
@@ -429,6 +462,10 @@ def main():
 
     result = generate_code_tldr(content, filename, args.level)
     print(result)
+
+    if args.stats:
+        print()
+        print(format_stats(content, result, filename, args.level))
 
 
 if __name__ == "__main__":

@@ -31,8 +31,11 @@ Usage:
     python3 handoff.py load
     python3 handoff.py load --json
     python3 handoff.py update --now "Fix verified, writing tests" --status completed
+    python3 handoff.py status
+    python3 handoff.py diff
 """
 import argparse
+import copy
 import json
 import os
 import sys
@@ -125,6 +128,14 @@ def save_handoff(data: dict) -> Path:
     handoff_path = get_handoff_path()
     handoff_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # Backup previous version for diff
+    if handoff_path.exists():
+        backup_path = handoff_path.with_suffix(".yaml.bak")
+        try:
+            backup_path.write_bytes(handoff_path.read_bytes())
+        except OSError:
+            pass  # Best-effort backup
+
     # Write atomically
     temp_path = handoff_path.with_suffix('.yaml.tmp')
     try:
@@ -208,6 +219,188 @@ def update_handoff(updates: dict) -> dict:
 
     save_handoff(merged)
     return merged
+
+
+# ============ DISPLAY HELPERS ============
+
+STATUS_ICONS = {
+    "in_progress": "🔄 in_progress",
+    "completed": "✅ completed",
+    "blocked": "🚫 blocked",
+}
+
+
+def _time_ago(iso_timestamp: str) -> str:
+    """Convert ISO timestamp to human-readable relative time."""
+    try:
+        ts = datetime.fromisoformat(iso_timestamp)
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        delta = now - ts
+        seconds = int(delta.total_seconds())
+        if seconds < 60:
+            return f"{seconds} seconds ago"
+        minutes = seconds // 60
+        if minutes < 60:
+            return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+        hours = minutes // 60
+        if hours < 24:
+            return f"{hours} hour{'s' if hours != 1 else ''} ago"
+        days = hours // 24
+        return f"{days} day{'s' if days != 1 else ''} ago"
+    except (ValueError, TypeError):
+        return "unknown"
+
+
+def _box(lines: list[str], title: str = "Flow Guardian") -> str:
+    """Wrap lines in a box-drawing character frame."""
+    # Compute width from content (min 40)
+    content_width = max((len(line) for line in lines), default=30)
+    width = max(content_width + 2, 40)
+
+    top = f"┌─ {title} " + "─" * (width - len(title) - 4) + "┐"
+    bottom = "└" + "─" * (width) + "┘"
+
+    boxed = [top]
+    for line in lines:
+        padded = line + " " * (width - 2 - len(line))
+        boxed.append(f"│ {padded} │")
+    boxed.append(bottom)
+    return "\n".join(boxed)
+
+
+def format_status(data: dict) -> str:
+    """Format handoff data as a rich box-drawing summary."""
+    lines = []
+
+    goal = data.get("goal", "No goal set")
+    lines.append(f"Goal: {goal}")
+
+    status = data.get("status", "unknown")
+    lines.append(f"Status: {STATUS_ICONS.get(status, status)}")
+
+    now = data.get("now")
+    if now:
+        lines.append(f"Now: {now}")
+
+    branch = data.get("branch")
+    if branch:
+        lines.append(f"Branch: {branch}")
+
+    timestamp = data.get("timestamp")
+    if timestamp:
+        lines.append(f"Last saved: {_time_ago(timestamp)}")
+
+    # Blank separator before stats
+    lines.append("")
+
+    # Counts
+    parts = []
+    done_count = len(data.get("done_this_session", []))
+    if done_count:
+        parts.append(f"{done_count} task{'s' if done_count != 1 else ''} done")
+    decision_count = len(data.get("decisions", []))
+    if decision_count:
+        parts.append(f"{decision_count} decision{'s' if decision_count != 1 else ''}")
+    finding_count = len(data.get("findings", []))
+    if finding_count:
+        parts.append(f"{finding_count} finding{'s' if finding_count != 1 else ''}")
+    if parts:
+        lines.append(f"📋 {' · '.join(parts)}")
+
+    files = data.get("files", [])
+    if files:
+        lines.append(f"📁 {len(files)} file{'s' if len(files) != 1 else ''} tracked")
+
+    blockers = data.get("blockers", [])
+    if blockers:
+        lines.append(f"⛔ {len(blockers)} blocker{'s' if len(blockers) != 1 else ''}")
+
+    next_steps = data.get("next", [])
+    if next_steps:
+        lines.append(f"➡️  {len(next_steps)} next step{'s' if len(next_steps) != 1 else ''}")
+
+    return _box(lines)
+
+
+def format_save_confirmation(data: dict, path: Path) -> str:
+    """Format a compact save confirmation."""
+    status = data.get("status", "unknown")
+    icon = STATUS_ICONS.get(status, status)
+    goal = data.get("goal", "")
+    now = data.get("now", "")
+
+    done_count = len(data.get("done_this_session", []))
+    files_count = len(data.get("files", []))
+    decision_count = len(data.get("decisions", []))
+
+    parts = []
+    if done_count:
+        parts.append(f"{done_count} tasks")
+    if decision_count:
+        parts.append(f"{decision_count} decisions")
+    if files_count:
+        parts.append(f"{files_count} files")
+    extras = f" ({', '.join(parts)})" if parts else ""
+
+    lines = [
+        f"💾 Saved: {goal}",
+        f"   {icon}{extras}",
+        f"   Now: {now}",
+        f"   → {path}",
+    ]
+    return "\n".join(lines)
+
+
+def format_diff(old: dict | None, new: dict) -> str:
+    """Show what changed between two handoff states."""
+    if old is None:
+        return "No previous handoff to compare against (this is the first save)."
+
+    changes = []
+
+    # Compare scalar fields
+    scalar_fields = ["goal", "status", "now", "branch", "hypothesis", "outcome", "test"]
+    for field in scalar_fields:
+        old_val = old.get(field)
+        new_val = new.get(field)
+        if old_val != new_val:
+            if old_val is None:
+                changes.append(f"  + {field}: {new_val}")
+            elif new_val is None:
+                changes.append(f"  - {field}: {old_val}")
+            else:
+                changes.append(f"  ~ {field}: {old_val} → {new_val}")
+
+    # Compare list fields
+    list_fields = [
+        ("done_this_session", "tasks"),
+        ("decisions", "decisions"),
+        ("findings", "findings"),
+        ("worked", "worked"),
+        ("failed", "failed"),
+        ("files", "files"),
+        ("blockers", "blockers"),
+        ("next", "next steps"),
+    ]
+    for field, label in list_fields:
+        old_list = old.get(field, [])
+        new_list = new.get(field, [])
+        old_count = len(old_list) if isinstance(old_list, list) else 0
+        new_count = len(new_list) if isinstance(new_list, list) else 0
+        if new_count > old_count:
+            added = new_count - old_count
+            changes.append(f"  + {added} new {label}")
+        elif new_count < old_count:
+            removed = old_count - new_count
+            changes.append(f"  - {removed} {label} removed")
+
+    if not changes:
+        return "No changes since last save."
+
+    header = f"Changes since {_time_ago(old.get('timestamp', ''))}:"
+    return header + "\n" + "\n".join(changes)
 
 
 # ============ CLI ============
@@ -327,9 +520,18 @@ def main():
                                help="Replace list fields instead of appending")
     _add_extended_args(update_parser)
 
+    # status
+    subparsers.add_parser("status", help="Show rich formatted summary of current handoff")
+
+    # diff
+    subparsers.add_parser("diff", help="Show what changed since last save")
+
     args = parser.parse_args()
 
     if args.command == "save":
+        # Snapshot previous state for diff
+        previous = load_handoff()
+
         data = {
             "goal": args.goal,
             "status": args.status,
@@ -339,7 +541,8 @@ def main():
 
         try:
             path = save_handoff(data)
-            print(f"Handoff saved to {path}")
+            saved = load_handoff()
+            print(format_save_confirmation(saved, path))
         except ValueError as e:
             print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
@@ -355,6 +558,9 @@ def main():
             print(yaml.safe_dump(handoff, default_flow_style=False, sort_keys=False), end="")
 
     elif args.command == "update":
+        # Snapshot previous state for diff
+        previous = load_handoff()
+
         updates = {}
         if args.goal:
             updates["goal"] = args.goal
@@ -377,6 +583,37 @@ def main():
         except ValueError as e:
             print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
+
+    elif args.command == "status":
+        handoff = load_handoff()
+        if handoff is None:
+            print("No handoff found. Run 'handoff.py save' first.", file=sys.stderr)
+            sys.exit(1)
+        print(format_status(handoff))
+
+    elif args.command == "diff":
+        handoff_path = get_handoff_path()
+        if not handoff_path.exists():
+            print("No handoff found. Nothing to diff.", file=sys.stderr)
+            sys.exit(1)
+
+        # Load current state from the YAML
+        current = load_handoff()
+        if current is None:
+            print("No handoff found. Nothing to diff.", file=sys.stderr)
+            sys.exit(1)
+
+        # Try loading the backup (.yaml.bak) saved by previous save
+        backup_path = handoff_path.with_suffix(".yaml.bak")
+        previous = None
+        if backup_path.exists():
+            try:
+                with open(backup_path, 'r', encoding='utf-8') as f:
+                    previous = yaml.safe_load(f)
+            except (yaml.YAMLError, PermissionError):
+                pass
+
+        print(format_diff(previous, current))
 
 
 if __name__ == "__main__":

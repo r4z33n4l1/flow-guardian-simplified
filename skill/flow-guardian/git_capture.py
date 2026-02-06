@@ -149,6 +149,49 @@ def capture_git_state(cwd: str = None) -> dict:
     }
 
 
+def format_pretty(state: dict) -> str:
+    """Format git state as human-readable text."""
+    if not state.get("is_git"):
+        return "Not a git repository."
+
+    lines = []
+    branch = state.get("branch", "unknown")
+    lines.append(f"🌿 Branch: {branch}")
+
+    last_commit = state.get("last_commit")
+    if last_commit:
+        short_hash = last_commit["hash"][:8]
+        lines.append(f"📌 Last commit: {short_hash} {last_commit['message']}")
+
+    uncommitted = state.get("uncommitted_files", [])
+    if uncommitted:
+        lines.append(f"\n📝 Uncommitted files ({len(uncommitted)}):")
+        for f in uncommitted:
+            lines.append(f"   • {f}")
+    else:
+        lines.append("\n✅ Working tree clean")
+
+    last_commit_files = state.get("last_commit_files", [])
+    if last_commit_files:
+        lines.append(f"\n📦 Last commit files ({len(last_commit_files)}):")
+        for f in last_commit_files:
+            lines.append(f"   • {f}")
+
+    diff_summary = state.get("diff_summary", "")
+    if diff_summary:
+        lines.append(f"\n📊 Diff summary:")
+        for line in diff_summary.split("\n"):
+            lines.append(f"   {line}")
+
+    recent = state.get("recent_commits", [])
+    if recent:
+        lines.append(f"\n🕐 Recent commits:")
+        for commit in recent:
+            lines.append(f"   {commit}")
+
+    return "\n".join(lines)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Capture git repository state. Outputs JSON to stdout."
@@ -163,6 +206,11 @@ def main():
         action="store_true",
         help="Compact JSON output (no indentation)"
     )
+    parser.add_argument(
+        "--pretty", "-p",
+        action="store_true",
+        help="Human-readable formatted output instead of JSON"
+    )
 
     args = parser.parse_args()
 
@@ -170,8 +218,11 @@ def main():
 
     state = capture_git_state(cwd)
 
-    indent = None if args.compact else 2
-    print(json.dumps(state, indent=indent))
+    if args.pretty:
+        print(format_pretty(state))
+    else:
+        indent = None if args.compact else 2
+        print(json.dumps(state, indent=indent))
 
 
 if __name__ == "__main__":
