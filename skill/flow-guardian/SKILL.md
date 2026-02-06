@@ -143,9 +143,19 @@ This skill writes to `memory/handoff.yaml` and `memory/learnings.md` in the work
 These files are automatically indexed by OpenClaw's memory search (`openclaw memory search`).
 The hook handles auto-injection at session start and auto-save at session end.
 
+## Model Usage — Be Smart About Costs
+
+**Code TLDR (`tldr_code.py`)** needs NO model at all — it's pure AST parsing. Use freely.
+
+**Content TLDR (`tldr.py`)** generates prompts that need an LLM to execute. **Use a fast/cheap model for this, not your primary model.** Summarization is grunt work — don't waste Opus tokens on it.
+
+If your OpenClaw setup has a cheaper model available (e.g. cerebras, a smaller Claude model, or any fast inference provider), route TLDR summarization through that. The prompt is model-agnostic — any instruction-following model works.
+
+**Handoff save/load** needs NO model — pure file I/O.
+
 ## Zero External Dependencies
 
 - **Code TLDR**: Pure Python AST parsing — no LLM calls, no API keys, instant results
 - **Handoff**: Pure Python + PyYAML — local file read/write
 - **Git Capture**: Uses system `git` via subprocess
-- **TLDR prompts**: Generates structured prompts — your agent's own model does the summarization
+- **TLDR prompts**: Generates structured prompts — your agent's own model does the summarization (use a cheap model!)
