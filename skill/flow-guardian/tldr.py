@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """TLDR System for Flow Guardian (OpenClaw Edition).
 
-Token-efficient summarization via structured prompts. Never inject raw content
-into context — compress first. Generates prompts that an LLM agent can use
-directly with its own model. No external API keys needed.
+Token-efficient summarization via structured prompts or Cerebras API.
+By default, generates prompts for the agent's own model (zero deps).
+With --cerebras flag, calls Cerebras API directly for fast, cheap summarization.
 
 Depth Levels:
 - L0: File paths only (~100 tokens)
@@ -24,6 +24,7 @@ Usage:
 """
 import argparse
 import json
+import os
 import sys
 
 
@@ -204,6 +205,87 @@ def generate_tldr_prompt(content: str, level: str = "L1", max_tokens: int = None
     }
 
 
+def cerebras_summarize(content: str, level: str = "L1", max_tokens: int = None) -> str:
+    """
+    Summarize content using Cerebras API (fast + cheap).
+    
+    Requires CEREBRAS_API_KEY env var. Falls back to prompt generation if unavailable.
+    
+    Args:
+        content: Content to summarize
+        level: TLDR depth level
+        max_tokens: Max output tokens
+        
+    Returns:
+        Summarized text, or None if Cerebras unavailable
+    """
+    api_key = os.environ.get("CEREBRAS_API_KEY")
+    if not api_key:
+        return None
+    
+    try:
+        import httpx
+    except ImportError:
+        # try urllib as fallback
+        try:
+            import urllib.request
+            import urllib.error
+            
+            prompt = build_summarize_prompt(content, level)
+            if max_tokens is None:
+                max_tokens = MAX_TOKENS.get(level, MAX_TOKENS["L1"])
+            
+            payload = json.dumps({
+                "model": "llama-4-scout-17b-16e-instruct",
+                "messages": [
+                    {"role": "system", "content": "You are a concise technical summarizer. Preserve key details, remove fluff."},
+                    {"role": "user", "content": prompt}
+                ],
+                "max_tokens": max_tokens,
+                "temperature": 0.1,
+            })
+            
+            req = urllib.request.Request(
+                "https://api.cerebras.ai/v1/chat/completions",
+                data=payload.encode("utf-8"),
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+            )
+            
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                return data["choices"][0]["message"]["content"]
+        except Exception:
+            return None
+    
+    try:
+        prompt = build_summarize_prompt(content, level)
+        if max_tokens is None:
+            max_tokens = MAX_TOKENS.get(level, MAX_TOKENS["L1"])
+        
+        resp = httpx.post(
+            "https://api.cerebras.ai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}"},
+            json={
+                "model": "llama-4-scout-17b-16e-instruct",
+                "messages": [
+                    {"role": "system", "content": "You are a concise technical summarizer. Preserve key details, remove fluff."},
+                    {"role": "user", "content": prompt}
+                ],
+                "max_tokens": max_tokens,
+                "temperature": 0.1,
+            },
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return data["choices"][0]["message"]["content"]
+    except Exception:
+        return None
+
+
 def summarize_handoff(handoff: dict, level: str = "L1") -> str:
     """
     Create TLDR of handoff state (no LLM needed — pure formatting).
@@ -336,6 +418,11 @@ def main():
         action="store_true",
         help="Output as JSON (includes metadata like action, level, token estimates)"
     )
+    parser.add_argument(
+        "--cerebras", "-c",
+        action="store_true",
+        help="Use Cerebras API for fast summarization (requires CEREBRAS_API_KEY env var)"
+    )
 
     args = parser.parse_args()
 
@@ -361,6 +448,21 @@ def main():
             sys.exit(0)
 
     result = generate_tldr_prompt(content, level, args.max_tokens)
+
+    # If cerebras flag is set and content needs summarization, call the API
+    if args.cerebras and result["action"] == "summarize":
+        summary = cerebras_summarize(content, level, args.max_tokens)
+        if summary:
+            if args.json:
+                result["action"] = "cerebras_summarized"
+                result["content"] = summary
+                result["compressed_tokens"] = estimate_tokens(summary)
+                print(json.dumps(result, indent=2))
+            else:
+                print(summary)
+            sys.exit(0)
+        else:
+            print("⚠ Cerebras unavailable, falling back to prompt generation", file=sys.stderr)
 
     if args.json:
         print(json.dumps(result, indent=2))
