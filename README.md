@@ -1,31 +1,62 @@
 # Flow Guardian
 
-**Persistent memory for AI coding sessions — now as an OpenClaw skill.**
+**Persistent session memory for OpenClaw agents.**
 
-Flow Guardian captures your coding session context (goals, hypotheses, decisions, files) and restores it seamlessly in future sessions. With AST-based TLDR compression, it achieves 97% token savings while preserving the exact symbols your agent needs.
+Your agent wakes up fresh every session. Flow Guardian gives it a memory — structured handoffs, AST-based code compression (97% token savings), and automatic context restoration. Zero API keys. Works offline.
 
-## Features
-
-- 🧠 **Structured Handoffs** — Save/restore session state as goal + status + hypothesis + files + branch
-- 📦 **97% Token Savings** — TLDR compression at L0/L1/L2/L3 depth levels
-- 🌳 **AST-Aware Code TLDR** — Python/JS/TS structure extraction via AST parsing (no LLM needed)
-- 🔀 **Git Context** — Auto-capture branch, modified files, recent commits
-- 📝 **Learning Extraction** — Identify and store insights from sessions
-- 🔒 **Zero External Services** — No API keys. No cloud. Pure local processing.
-- ⚡ **OpenClaw Native** — Skill + Hook integration with OpenClaw's memory and session system
-
-## Quick Start (OpenClaw)
+## Install
 
 ```bash
-# Install skill + hook
-cp -r skill/flow-guardian/ ~/.openclaw/skills/flow-guardian/
-cp -r hook/flow-guardian/ ~/.openclaw/hooks/flow-guardian/
-pip install PyYAML>=6.0.0
+# clone
+git clone https://github.com/r4z33n4l1/flow-guardian-simplified.git /tmp/flow-guardian
+
+# install skill + hook
+cp -r /tmp/flow-guardian/skill/flow-guardian/ ~/.openclaw/skills/flow-guardian/
+cp -r /tmp/flow-guardian/hook/flow-guardian/ ~/.openclaw/hooks/flow-guardian/
+
+# only dependency
+pip install PyYAML
 ```
 
-See [INSTALL.md](INSTALL.md) for detailed setup instructions.
+That's it. Your agent now has persistent memory.
 
-## How It Works
+### OpenClaw self-setup
+
+If you're an OpenClaw agent setting this up for your human, run:
+
+```bash
+# 1. clone the repo
+git clone https://github.com/r4z33n4l1/flow-guardian-simplified.git /tmp/flow-guardian
+
+# 2. install skill
+mkdir -p ~/.openclaw/skills/flow-guardian
+cp /tmp/flow-guardian/skill/flow-guardian/* ~/.openclaw/skills/flow-guardian/
+
+# 3. install hook
+mkdir -p ~/.openclaw/hooks/flow-guardian
+cp /tmp/flow-guardian/hook/flow-guardian/* ~/.openclaw/hooks/flow-guardian/
+
+# 4. verify
+python3 ~/.openclaw/skills/flow-guardian/tldr_code.py --file ~/.openclaw/skills/flow-guardian/handoff.py --level L1
+python3 ~/.openclaw/skills/flow-guardian/handoff.py save --goal "Test install" --now "Verifying" --status in_progress
+python3 ~/.openclaw/skills/flow-guardian/handoff.py load
+python3 ~/.openclaw/skills/flow-guardian/git_capture.py --compact
+```
+
+If all four commands output without errors, you're good. Add this to your `AGENTS.md`:
+
+```markdown
+## Flow Guardian (Session Memory)
+
+At session start, check `memory/handoff.yaml` for previous session state.
+Before ending a session, save state with:
+  python3 ~/.openclaw/skills/flow-guardian/handoff.py save --goal "..." --now "..." --status in_progress
+
+For large file reads, compress first:
+  python3 ~/.openclaw/skills/flow-guardian/tldr_code.py --file <path> --level L1
+```
+
+## What it does
 
 ```
 Session Start                          Session End
@@ -40,128 +71,132 @@ Session Start                          Session End
 ┌─────────────┐                    ┌─────────────┐
 │ Load        │                    │ Save        │
 │ handoff.yaml│                    │ handoff.yaml│
-│ learnings.md│                    │ learnings.md│
+│ learnings   │                    │ learnings   │
 │ git state   │                    │ git state   │
 └──────┬──────┘                    └─────────────┘
        │
        ▼
-   Agent has
-   full context
+   Agent resumes
+   with full context
 ```
 
 ## Tools
 
-### Code TLDR (No LLM needed — instant)
+### `tldr_code.py` — Code structure extraction
+
+AST-based. No LLM. Instant. Supports Python, JavaScript, TypeScript.
 
 ```bash
-# Extract Python/JS/TS structure via AST parsing
-python3 ~/.openclaw/skills/flow-guardian/tldr_code.py --file src/server.py --level L2
-
-# Output:
-## server.py
-**Imports:** flask, sqlalchemy, jwt, ...
-**Classes:**
-- `AuthController(BaseController)`
-  Methods: login(self, request), logout(self, request), refresh_token(self, request)
-**Functions:**
-- `create_app(config: dict) -> Flask`
-- `setup_routes(app: Flask) -> None`
+python3 tldr_code.py --file src/server.py --level L1    # signatures only
+python3 tldr_code.py --file src/server.py --level L2    # + docstrings
+python3 tldr_code.py --file src/server.py --level L3    # + call graph hints
+cat file.py | python3 tldr_code.py --level L1           # stdin
 ```
 
-### Handoff Management
+**Depth levels:**
+
+| Level | What you get | Tokens | Use case |
+|-------|-------------|--------|----------|
+| L1 | Imports, function signatures, class names | ~300 | Quick orientation |
+| L2 | + Docstrings, method signatures | ~600 | Working context |
+| L3 | + Call graph hints, constants | ~1200 | Deep debugging |
+
+### `handoff.py` — Session state management
+
+Save what you're working on. Load it next session.
 
 ```bash
-# Save session state
+# save
 python3 handoff.py save \
   --goal "Implement JWT auth" \
-  --status in_progress \
   --now "Debugging token expiry" \
+  --status in_progress \
   --hypothesis "Off-by-one in timestamp comparison" \
   --files "src/auth.py,tests/test_auth.py" \
-  --branch "fix/jwt-expiry"
+  --branch fix/jwt-expiry \
+  --done "Set up auth middleware" \
+  --done "Added token refresh endpoint" \
+  --decision "Use RS256 over HS256: better key rotation" \
+  --finding "JWT timestamps are UTC, not local" \
+  --worked "Testing with httpie instead of curl" \
+  --failed-approach "Tried monkey-patching datetime.now — broke other tests" \
+  --next "Write integration tests" \
+  --outcome PARTIAL_PLUS
 
-# Load previous session
+# load
 python3 handoff.py load
 
-# Update current session
-python3 handoff.py update --now "Fix verified, writing tests" --status completed
+# update (appends to lists)
+python3 handoff.py update --done "Fixed token expiry bug" --status completed --outcome SUCCEEDED
 ```
 
-### TLDR Compression
+**Fields:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `goal` | yes | What you're trying to accomplish |
+| `now` | yes | Current focus |
+| `status` | yes | `in_progress`, `completed`, `blocked` |
+| `hypothesis` | no | Current working theory |
+| `outcome` | no | `SUCCEEDED`, `PARTIAL_PLUS`, `PARTIAL_MINUS`, `FAILED` |
+| `files` | no | Files being worked on |
+| `branch` | no | Git branch |
+| `done_this_session` | no | Completed tasks (repeatable `--done`) |
+| `decisions` | no | Key decisions with rationale (repeatable `--decision`) |
+| `findings` | no | Learnings/discoveries (repeatable `--finding`) |
+| `worked` | no | Approaches that worked (repeatable `--worked`) |
+| `failed` | no | Approaches that failed (repeatable `--failed-approach`) |
+| `next` | no | Action items for next session (repeatable `--next`) |
+
+### `tldr.py` — Content compression
+
+Generates structured prompts for your agent's LLM. No external API.
 
 ```bash
-# Generate summarization prompt at specified depth
-cat large_file.py | python3 tldr.py --level L1
-
-# Auto-select level based on content size
-cat large_file.py | python3 tldr.py --auto
-
-# JSON output with metadata
-cat large_file.py | python3 tldr.py --level L2 --json
+cat large_file.py | python3 tldr.py --level L1      # brief summary prompt
+cat large_file.py | python3 tldr.py --auto           # auto-select level by size
+cat large_file.py | python3 tldr.py --json           # JSON with metadata
+echo "short" | python3 tldr.py                        # small content passes through
 ```
 
-### Git Context
+### `git_capture.py` — Repository state
 
 ```bash
-# Capture repository state as JSON
+python3 git_capture.py                     # current directory
 python3 git_capture.py --repo /path/to/project
+python3 git_capture.py --compact           # single-line JSON
 ```
 
-## TLDR Depth Levels
+## Hook events
 
-| Level | Content | Typical Tokens | Use Case |
-|-------|---------|---------------|----------|
-| **L0** | File paths only | ~100 | Quick orientation |
-| **L1** | + One-line descriptions | ~300 | Default, session handoffs |
-| **L2** | + Key logic summaries | ~600 | Detailed context restoration |
-| **L3** | Full context, minimal compression | ~1500 | Deep debugging sessions |
+| Event | What happens |
+|-------|-------------|
+| `agent:bootstrap` | Loads `memory/handoff.yaml` + recent learnings + git state into session |
+| `command:stop` | Reminds agent to save handoff before ending |
+| `command:reset` | Reminds agent to save handoff before reset |
+| `command:new` | Reminds agent to save handoff before new session |
 
-## Architecture
+## What OpenClaw replaces
 
-### Skill (On-Demand Tools)
+The original Flow Guardian needed Cerebras, Backboard.io, FastAPI, a daemon, and an MCP server. This edition needs none of that:
 
-| Tool | Purpose | Dependencies |
-|------|---------|-------------|
-| `tldr_code.py` | AST-based code structure extraction | Python stdlib |
-| `tldr.py` | TLDR prompt generation for LLM summarization | Python stdlib |
-| `handoff.py` | Session state save/load/update | PyYAML |
-| `git_capture.py` | Git repository state capture | subprocess + git |
-
-### Hook (Automated Events)
-
-| Event | Action |
-|-------|--------|
-| `agent:bootstrap` | Load handoff + learnings + git state → inject into session |
-| `command:stop` | Remind agent to save handoff state |
-| `command:reset` | Remind agent to save handoff state |
-| `command:new` | Remind agent to save handoff state |
-
-## What's Different from the Original
-
-The original Flow Guardian required Cerebras API, Backboard.io, FastAPI, and a background daemon. This OpenClaw edition:
-
-| Removed | Replaced By |
-|---------|-------------|
-| Cerebras client | Agent's own LLM (via structured prompts) |
-| Backboard.io | `openclaw memory search` (qmd vectors) |
+| Removed | OpenClaw handles it |
+|---------|-------------------|
+| Cerebras client | Agent's own LLM |
+| Backboard.io vectors | `openclaw memory search` |
 | FastAPI server | OpenClaw Gateway |
 | Background daemon | OpenClaw hooks |
-| MCP server | Direct tool calls |
-| Web UI | OpenClaw Control UI |
+| MCP server | Direct tool access |
 
-**Result:** Zero external dependencies. Zero API keys. Works offline.
+**Result:** 1 dependency (PyYAML). Zero API keys. Works offline.
 
 ## Requirements
 
 - Python 3.10+
-- PyYAML >= 6.0.0
-- Git (for `git_capture.py`)
-- OpenClaw (for hook integration)
+- PyYAML
+- Git (for git_capture.py)
+- OpenClaw
 
 ## License
 
 MIT
-
----
-
-**"Your agent forgets. Flow Guardian remembers."**
